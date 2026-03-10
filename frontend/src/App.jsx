@@ -133,7 +133,7 @@ function App() {
       widgets: [
         { id: 'messages', name: 'Messages', description: 'Total message count' },
         { id: 'sentiment', name: 'Sentiment Overview', description: 'Average sentiment score' },
-        { id: 'toxicity', name: 'Toxicity Overview', description: 'Toxic message count' }
+        { id: 'toxicity', name: 'Toxic Messages', description: 'Toxic message count' }
       ]
     },
     {
@@ -142,7 +142,7 @@ function App() {
         { id: 'sentimentDist', name: 'Sentiment Distribution', description: 'Breakdown by category' },
         { id: 'timelineSentiment', name: 'Sentiment Timeline', description: 'Sentiment over time' },
         { id: 'timelineToxicity', name: 'Toxicity Timeline', description: 'Toxicity over time' },
-        { id: 'toxicityGauge', name: 'Toxicity Gauge', description: 'Current toxicity level' }
+        { id: 'toxicityGauge', name: 'Toxicity Severity', description: 'Current toxicity level' }
       ]
     },
     {
@@ -268,7 +268,7 @@ function App() {
           )}
 
           {visibleWidgets.toxicity && (
-            <CustomizableWidget widgetId="toxicity" title="Toxicity" config={widgetConfigs.toxicity} participants={participants} onConfigChange={(u) => updateWidgetConfig('toxicity', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
+            <CustomizableWidget widgetId="toxicity" title="Toxic Messages" config={widgetConfigs.toxicity} participants={participants} onConfigChange={(u) => updateWidgetConfig('toxicity', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
               {(() => {
                 const data = getFilteredTranscript('toxicity')
                 const stats = calculateStats(data)
@@ -306,7 +306,7 @@ function App() {
           )}
 
           {visibleWidgets.toxicityGauge && (
-            <CustomizableWidget widgetId="toxicityGauge" title="Toxicity Level" config={widgetConfigs.toxicityGauge} participants={participants} onConfigChange={(u) => updateWidgetConfig('toxicityGauge', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
+            <CustomizableWidget widgetId="toxicityGauge" title="Toxicity Severity" config={widgetConfigs.toxicityGauge} participants={participants} onConfigChange={(u) => updateWidgetConfig('toxicityGauge', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
               {(() => {
                 const data = getFilteredTranscript('toxicityGauge')
                 const stats = calculateStats(data)
