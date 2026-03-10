@@ -1,0 +1,180 @@
+# ============================================
+# MOCK DATA CONFIGURATION - OPTIMIZED TEST SET
+# ============================================
+
+# Frasi ottimizzate per testare sentiment + toxicity in modo completo
+sample_phrases:
+  # ================================================
+  # CATEGORIA 1: POSITIVE SENTIMENT + LOW TOXICITY
+  # Test: Verde/Green - Messaggi costruttivi
+  # ================================================
+  - "This is exactly what we needed, fantastic work everyone!"
+  - "I'm really impressed with the progress, great job team."
+  - "Your presentation was outstanding, thank you for sharing."
+  - "I love this approach, it solves all our problems elegantly."
+  - "Brilliant idea! This will definitely move us forward."
+  - "Perfect execution, you've exceeded all expectations."
+  - "I'm very optimistic about these results, well done."
+  - "This collaboration has been incredibly productive."
+  - "Thank you for your thorough analysis, very helpful."
+  - "Excellent point, I completely agree with this direction."
+
+  # ================================================
+  # CATEGORIA 2: NEUTRAL SENTIMENT + LOW TOXICITY
+  # Test: Giallo/Yellow - Messaggi informativi
+  # ================================================
+  - "Let me share my screen to show the dashboard."
+  - "Can everyone see the slides properly?"
+  - "We should schedule a follow-up meeting next week."
+  - "I'll send the document via email after this."
+  - "The deadline is approaching, we need to finalize this."
+  - "There are a few items left to discuss on the agenda."
+  - "I have a question about the implementation timeline."
+  - "Could you clarify the requirements for this feature?"
+  - "We're currently at 75% completion on the project."
+  - "Let's move on to the next topic, we're running short on time."
+
+  # ================================================
+  # CATEGORIA 3: NEGATIVE SENTIMENT + LOW TOXICITY
+  # Test: Arancione - Disapprovazione educata
+  # ================================================
+  - "I respectfully disagree with this approach, here's why."
+  - "I'm not convinced this is the best solution for our needs."
+  - "This might not work as planned, we should reconsider."
+  - "I'm concerned about the potential risks involved."
+  - "The timeline seems unrealistic given our current resources."
+  - "This proposal has some significant drawbacks we need to address."
+  - "I don't think we've fully thought through the implications."
+  - "Perhaps we should explore alternative options first."
+  - "The data doesn't support this conclusion, unfortunately."
+  - "I'm skeptical about whether this will achieve the desired results."
+
+  # ================================================
+  # CATEGORIA 4: NEGATIVE SENTIMENT + HIGH TOXICITY
+  # Test: Rosso/Red - Messaggi offensivi/aggressivi
+  # ================================================
+  - "This is completely stupid, what were you thinking?"
+  - "You're wasting everyone's time with this nonsense."
+  - "I can't believe you actually suggested this, it's terrible."
+  - "This is the worst idea I've ever heard in my career."
+  - "You clearly have no idea what you're talking about."
+  - "Stop interrupting me, you're being incredibly annoying."
+  - "This project is a disaster because of your incompetence."
+  - "Shut up and let someone competent handle this."
+  - "You're useless, this work is completely unacceptable."
+  - "I'm tired of dealing with your constant mistakes and failures."
+
+  # ================================================
+  # CATEGORIA 5: MIXED SIGNALS - Edge Cases Interessanti
+  # Test: Comportamento con messaggi ambigui
+  # ================================================
+  - "Well, that's one way to do it I suppose..."  # Sarcasmo passivo
+  - "Great job breaking everything, really impressive."  # Sarcasmo aggressivo
+  - "I'm not angry, just disappointed in the execution."  # Negative mascherato
+  - "This is... interesting. Very creative approach."  # Dubbio educato
+  - "Sure, if you think that'll work, go ahead."  # Passivo-aggressivo
+  - "I mean, technically it's correct, but..."  # Critica velata
+  - "Wow, didn't see that coming. Unexpected choice."  # Ambiguo
+  - "It's fine, I guess. Not what I expected though."  # Delusione soft
+  - "Amazing how we managed to complicate something so simple."  # Frustrazione sarcastica
+  - "I suppose we can try your way if you really insist."  # Rassegnazione
+
+  # ================================================
+  # CATEGORIA 6: EMOTIONAL INTENSITY - Test Emozioni Forti
+  # Test: Punteggiatura ed emozioni estreme
+  # ================================================
+  - "YES!! This is EXACTLY what we needed!!!"  # Entusiasmo estremo
+  - "NO! This won't work AT ALL!"  # Rifiuto categorico
+  - "Why?? Why would we do this??"  # Confusione frustrata
+  - "ABSOLUTELY NOT. This is unacceptable."  # Rifiuto forte
+  - "Oh my god, this is incredible work!"  # Sorpresa positiva
+  - "Are you kidding me right now??"  # Incredulità negativa
+  - "Please, PLEASE consider the alternatives."  # Supplica disperata
+  - "Wait, wait, wait... this doesn't make sense."  # Confusione crescente
+  - "I LOVE this solution, brilliant!"  # Adorazione
+  - "This is SO frustrating, why is this happening?"  # Frustrazione esplicita
+
+  # ================================================
+  # CATEGORIA 7: LENGTH VARIATIONS - Test Limiti UI
+  # Test: Layout e wrapping del testo
+  # ================================================
+  - "Ok."  # Ultra-breve (2 caratteri)
+  - "No."  # Ultra-breve alternativo
+  - "Agreed."  # Breve (7 caratteri)
+  - "Sounds good to me."  # Corto standard (18 caratteri)
+  
+  # Medio (>100 caratteri)
+  - "I think we need to take a step back and reconsider our entire approach to this problem, because the current direction doesn't seem sustainable."
+  
+  # Lungo (>200 caratteri)
+  - "Looking at the quarterly results and comparing them with our projections from last year, it's clear that we've significantly underperformed in several key areas, particularly in user retention and conversion rates, which suggests we need a comprehensive strategy overhaul."
+  
+  # Molto lungo (>300 caratteri)
+  - "If we carefully analyze the data from the past six months, specifically focusing on the metrics related to customer satisfaction, support ticket resolution times, and feature adoption rates, while also considering the feedback we've received from our enterprise clients during the last two quarterly business reviews, it becomes increasingly evident that our current implementation strategy may require substantial modifications."
+
+  # ================================================
+  # CATEGORIA 8: CONTEXT-SPECIFIC - Meeting Realistici
+  # Test: Scenari comuni in riunioni
+  # ================================================
+  - "Can we circle back to the budget discussion?"
+  - "I need to drop off in 5 minutes for another call."
+  - "Sorry, I was on mute. Could you repeat that?"
+  - "Let's park this topic and revisit it offline."
+  - "I'll take this as an action item and follow up."
+  - "We're losing focus, can we get back on track?"
+  - "That's outside my area of expertise, I'll defer to the team."
+  - "I'm seeing some lag, is anyone else experiencing this?"
+  - "Let's do a quick round robin for feedback."
+  - "I think we're aligned, let's move forward with this."
+
+  # ================================================
+  # CATEGORIA 9: QUESTIONS - Test Sentiment con Interrogativi
+  # Test: Domande con diverso tone
+  # ================================================
+  - "What's the rationale behind this decision?"  # Neutrale
+  - "How is this even remotely feasible?"  # Negativo
+  - "Could you walk us through the benefits?"  # Positivo/Curioso
+  - "Why are we still discussing this?"  # Frustrato
+  - "When can we expect the deliverables?"  # Neutrale/Pressante
+  - "Who approved this budget increase?"  # Sospettoso
+  - "Where do we go from here?"  # Incerto
+  - "Which option do you recommend and why?"  # Costruttivo
+
+  # ================================================
+  # CATEGORIA 10: PROFESSIONAL DISAGREEMENT SPECTRUM
+  # Test: Gradazione da educato a offensivo
+  # ================================================
+  - "I see your point, though I have a different perspective."  # Livello 1: Educato
+  - "I understand, but I don't fully agree with that assessment."  # Livello 2: Diplomatico
+  - "That doesn't align with the data we're seeing."  # Livello 3: Oggettivo
+  - "I strongly disagree with this approach."  # Livello 4: Diretto
+  - "This makes no sense, we need to rethink everything."  # Livello 5: Critico
+  - "This is completely wrong and will lead to failure."  # Livello 6: Aggressivo
+  - "You have no clue what you're doing with this."  # Livello 7: Offensivo
+
+# Partecipanti predefiniti
+participants:
+  - id: "fj93829"
+    name: "Alice"
+  - id: "dkd9320"
+    name: "Bob"
+  - id: "abc1234"
+    name: "Charlie"
+
+# Configurazione meeting - Aumentati per avere più varietà
+meetings:
+  - id: "mtg001"
+    date: "2024-06-01T10:00:00Z"
+    num_entries: 30  # Aumentato per più varietà
+  - id: "mtg002"
+    date: "2024-06-02T14:00:00Z"
+    num_entries: 40
+  - id: "mtg003"
+    date: "2024-06-03T09:00:00Z"
+    num_entries: 25
+
+# Configurazione generazione
+generation:
+  min_duration_seconds: 3
+  max_pause_seconds: 4  # Aumentato per più realismo
+  chars_per_second: 15

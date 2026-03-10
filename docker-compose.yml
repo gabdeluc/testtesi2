@@ -1,0 +1,97 @@
+version: "3.8"
+
+services:
+  # ============================================
+  # BACKEND GATEWAY
+  # ============================================
+  backend:
+    build: ./backend
+    container_name: fastapi-backend-gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - BERT_SERVICE_URL=http://bert-sentiment:5001
+      - TOXICITY_SERVICE_URL=http://bert-toxicity:5003
+    depends_on:
+      - bert-sentiment
+      - bert-toxicity
+    restart: unless-stopped
+    networks:
+      - ml-network
+
+  # ============================================
+  # BERT SENTIMENT MICROSERVICE
+  # ============================================
+  bert-sentiment:
+    build: ./services/bert-sentiment
+    container_name: bert-sentiment-service
+    ports:
+      - "5001:5001"
+    volumes:
+      - bert-model-cache:/app/.cache
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TRANSFORMERS_CACHE=/app/.cache/transformers
+      - MODEL_NAME=nlptown/bert-base-multilingual-uncased-sentiment
+    restart: unless-stopped
+    networks:
+      - ml-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ============================================
+  # E5 EMBEDDINGS MICROSERVICE
+  # ============================================
+  # ============================================
+  # BERT TOXICITY MICROSERVICE
+  # ============================================
+  bert-toxicity:
+    build: ./services/bert-toxicity
+    container_name: bert-toxicity-service
+    ports:
+      - "5003:5003"
+    volumes:
+      - bert-toxicity-cache:/app/.cache
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TRANSFORMERS_CACHE=/app/.cache/transformers
+      - MODEL_NAME=gravitee-io/bert-small-toxicity
+    restart: unless-stopped
+    networks:
+      - ml-network
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+
+  # ============================================
+  # FRONTEND
+  # ============================================
+  frontend:
+    build: ./frontend
+    container_name: react-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - ml-network
+
+networks:
+  ml-network:
+    driver: bridge
+
+volumes:
+  bert-model-cache:
+    driver: local
+  bert-toxicity-cache:
+    driver: local
