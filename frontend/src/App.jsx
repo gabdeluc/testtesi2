@@ -148,20 +148,48 @@ function App() {
     if (!transcript || transcript.length === 0) {
       return {
         total_messages: 0,
-        sentiment: { distribution: { positive: 0, neutral: 0, negative: 0 }, average_score: 0, positive_ratio: 0 },
+        sentiment: {
+          distribution: { positive: 0, neutral: 0, negative: 0 },
+          average_score: 0,
+          positive_ratio: 0,
+          average_polarity: 0   // range [-1, +1]
+        },
         toxicity: { toxic_count: 0, toxic_ratio: 0, severity_distribution: { low: 0, medium: 0, high: 0 }, average_toxicity_score: 0 }
       }
     }
+
     const total = transcript.length
-    let sentimentScoreSum = 0, toxicityScoreSum = 0
-    const sentimentDist = { positive: 0, neutral: 0, negative: 0 }
-    const severityDist = { low: 0, medium: 0, high: 0 }
-    let toxicCount = 0
+
+    // Mappa segno per label — cuore della formula polarity
+    const LABEL_SIGN = { positive: 1, neutral: 0, negative: -1 }
+
+    let sentimentScoreSum = 0
+    let polaritySum       = 0   // Σ sign(label) × score × confidence
+    let toxicityScoreSum  = 0
+    const sentimentDist   = { positive: 0, neutral: 0, negative: 0 }
+    const severityDist    = { low: 0, medium: 0, high: 0 }
+    let toxicCount        = 0
 
     transcript.forEach(entry => {
-      const sentLabel = entry.sentiment.label
-      if (sentimentDist[sentLabel] !== undefined) sentimentDist[sentLabel]++
-      sentimentScoreSum += entry.sentiment.score
+      const { label, score, confidence } = entry.sentiment
+
+      // Conteggi distribuzione
+      if (sentimentDist[label] !== undefined) sentimentDist[label]++
+
+      // Score grezzo (mantenuto per compat)
+      sentimentScoreSum += score
+
+      // ── Polarity pesata per confidence ──────────────────────────
+      // Formula: sign(label) × score × confidence  →  [-1, +1]
+      // Motivazione:
+      //   • sign assegna direzione (positivo/negativo)
+      //   • score è la probabilità della classe vincente
+      //   • confidence pesa quanto il modello è sicuro:
+      //     predizioni incerte contribuiscono meno all'aggregato
+      const sign = LABEL_SIGN[label] ?? 0
+      polaritySum += sign * score * confidence
+      // ────────────────────────────────────────────────────────────
+
       if (entry.toxicity.is_toxic) toxicCount++
       const severity = entry.toxicity.severity
       if (severityDist[severity] !== undefined) severityDist[severity]++
@@ -170,8 +198,18 @@ function App() {
 
     return {
       total_messages: total,
-      sentiment: { distribution: sentimentDist, average_score: sentimentScoreSum / total, positive_ratio: sentimentDist.positive / total },
-      toxicity: { toxic_count: toxicCount, toxic_ratio: toxicCount / total, severity_distribution: severityDist, average_toxicity_score: toxicityScoreSum / total }
+      sentiment: {
+        distribution:     sentimentDist,
+        average_score:    sentimentScoreSum / total,   // mantenuto per compat
+        positive_ratio:   sentimentDist.positive / total,
+        average_polarity: polaritySum / total           // metrica principale [-1, +1]
+      },
+      toxicity: {
+        toxic_count:            toxicCount,
+        toxic_ratio:            toxicCount / total,
+        severity_distribution:  severityDist,
+        average_toxicity_score: toxicityScoreSum / total
+      }
     }
   }
 
@@ -418,9 +456,9 @@ function App() {
           {visibleWidgets.sentiment && (
             <CustomizableWidget widgetId="sentiment" title="Sentiment" config={widgetConfigs.sentiment} participants={participants} onConfigChange={(u) => updateWidgetConfig('sentiment', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
               {(() => {
-                const data = getFilteredTranscript('sentiment')
+                const data  = getFilteredTranscript('sentiment')
                 const stats = calculateStats(data)
-                return <><div style={styles.kpiValue}>{(stats.sentiment.average_score * 100).toFixed(0)}%</div><div style={styles.kpiLabel}>{(stats.sentiment.positive_ratio * 100).toFixed(0)}% positive</div></>
+                return <PolarityKPI polarity={stats.sentiment.average_polarity} positiveRatio={stats.sentiment.positive_ratio} />
               })()}
             </CustomizableWidget>
           )}
@@ -488,6 +526,69 @@ function App() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POLARITY KPI COMPONENT
+// Visualizza average_polarity su scala bipolare [-1, +1]
+// ─────────────────────────────────────────────────────────────────────────────
+function PolarityKPI({ polarity, positiveRatio }) {
+  const p = polarity ?? 0
+
+  // Colore: verde se positivo, rosso se negativo, giallo se neutro
+  const absP = Math.abs(p)
+  const color = p > 0.05
+    ? `rgb(${Math.round(52 - absP * 20)}, ${Math.round(199 - absP * 20)}, ${Math.round(89 + absP * 30)})`
+    : p < -0.05
+    ? `rgb(${Math.round(255)}, ${Math.round(59 + absP * 30)}, ${Math.round(48)})`
+    : '#FFCC00'
+
+  // Posizione del cursore sulla barra [-1 → 0%, +1 → 100%]
+  const cursorPct = ((p + 1) / 2) * 100
+
+  // Etichetta testuale
+  const label =
+    p >  0.5 ? 'Very Positive' :
+    p >  0.1 ? 'Positive'      :
+    p > -0.1 ? 'Neutral'       :
+    p > -0.5 ? 'Negative'      : 'Very Negative'
+
+  return (
+    <div style={{ padding: '4px 0' }}>
+      {/* Valore principale */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+        <div style={{ fontSize: '36px', fontWeight: '700', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          {p >= 0 ? '+' : ''}{p.toFixed(3)}
+        </div>
+      </div>
+      <div style={{ fontSize: '12px', color, fontWeight: '600', marginTop: '2px' }}>{label}</div>
+
+      {/* Barra polare [-1 … 0 … +1] */}
+      <div style={{ marginTop: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#636366', marginBottom: '4px' }}>
+          <span>−1</span><span style={{ color: '#8e8e93' }}>Polarity scale</span><span>+1</span>
+        </div>
+        <div style={{ position: 'relative', height: '6px', borderRadius: '3px', background: 'linear-gradient(to right, #FF3B30 0%, #FFCC00 50%, #34C759 100%)' }}>
+          {/* Zero-line */}
+          <div style={{ position: 'absolute', left: '50%', top: '-2px', width: '1px', height: '10px', backgroundColor: 'rgba(255,255,255,0.3)' }} />
+          {/* Cursore */}
+          <div style={{
+            position: 'absolute', left: `${cursorPct}%`, top: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '12px', height: '12px', borderRadius: '50%',
+            backgroundColor: color, border: '2px solid #1c1c1e',
+            boxShadow: `0 0 6px ${color}`,
+            transition: 'left 0.4s ease'
+          }} />
+        </div>
+      </div>
+
+      {/* Sub-label */}
+      <div style={{ fontSize: '11px', color: '#636366', marginTop: '8px' }}>
+        {(positiveRatio * 100).toFixed(0)}% positive messages · weighted by confidence
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PARTICIPANT ROSTER COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 function ParticipantRoster({ participantStats }) {
@@ -506,7 +607,8 @@ function ParticipantRoster({ participantStats }) {
         const posW = total ? (dist.positive / total) * 100 : 0
         const neuW = total ? (dist.neutral  / total) * 100 : 0
         const negW = total ? (dist.negative / total) * 100 : 0
-        const avgSent = (s.sentiment.average_score * 100).toFixed(0)
+        const avgPolarity = s.sentiment.average_polarity ?? 0
+        const polaritySign = avgPolarity >= 0 ? '+' : ''
         const toxRatio = total ? (s.toxicity.toxic_count / total * 100).toFixed(0) : 0
         const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length]
 
@@ -553,8 +655,10 @@ function ParticipantRoster({ participantStats }) {
                 <div style={rosterStyles.kpiLab}>messages</div>
               </div>
               <div style={rosterStyles.kpiCell}>
-                <div style={{ ...rosterStyles.kpiVal, color: '#34C759' }}>{avgSent}%</div>
-                <div style={rosterStyles.kpiLab}>avg sentiment</div>
+                <div style={{ ...rosterStyles.kpiVal, color: avgPolarity >= 0 ? '#34C759' : '#FF3B30' }}>
+                  {polaritySign}{avgPolarity.toFixed(2)}
+                </div>
+                <div style={rosterStyles.kpiLab}>polarity</div>
               </div>
               <div style={rosterStyles.kpiCell}>
                 <div style={{ ...rosterStyles.kpiVal, color: s.toxicity.toxic_count > 0 ? '#FF3B30' : '#34C759' }}>

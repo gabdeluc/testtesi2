@@ -415,7 +415,15 @@ async def get_transcript_with_unified_analysis(
     sentiment_positive = 0
     sentiment_neutral = 0
     sentiment_negative = 0
-    total_sentiment_score = 0
+    total_sentiment_score = 0   # mantenuto per backward-compat con i test esistenti
+    total_polarity_score  = 0.0 # ← NUOVO: somma delle polarity pesate per confidence
+
+    # Mappa segno per label (usata nel ciclo)
+    LABEL_SIGN = {
+        SentimentLabel.POSITIVE:  1.0,
+        SentimentLabel.NEUTRAL:   0.0,
+        SentimentLabel.NEGATIVE: -1.0,
+    }
     
     # Stats accumulatori toxicity (NUOVO formato)
     toxic_count = 0
@@ -431,11 +439,16 @@ async def get_transcript_with_unified_analysis(
         entry_dict = entry.dict(by_alias=True)
         
         # Sentiment (formato normalizzato)
+        label_sign = LABEL_SIGN[sent_pred.label]
+        msg_polarity = round(label_sign * sent_pred.score * sent_pred.confidence, 4)
+
+        # Sentiment (formato normalizzato)
         entry_dict['sentiment'] = {
-            'label': sent_pred.label.value,
-            'score': sent_pred.score,
+            'label':     sent_pred.label.value,
+            'score':     sent_pred.score,
             'confidence': sent_pred.confidence,
-            'raw': sent_pred.raw_output
+            'polarity':  msg_polarity,   # ← NUOVO: polarity per singolo messaggio
+            'raw':       sent_pred.raw_output,
         }
         
         # Toxicity (formato dedicato) - NUOVO
@@ -457,6 +470,7 @@ async def get_transcript_with_unified_analysis(
         else:
             sentiment_negative += 1
         total_sentiment_score += sent_pred.score
+        total_polarity_score  += msg_polarity
         
         # Accumula stats toxicity (NUOVO)
         if tox_result.is_toxic:
@@ -479,7 +493,7 @@ async def get_transcript_with_unified_analysis(
         "metadata": {
             "language": "en",
             "formats": {
-                "sentiment": "normalized (positive/neutral/negative, score 0-1)",
+                "sentiment": "normalized (positive/neutral/negative, score 0-1, polarity -1..+1 weighted by confidence)",
                 "toxicity": "dedicated (is_toxic bool, severity low/medium/high, score 0-1)"
             },
             "stats": {
@@ -487,11 +501,19 @@ async def get_transcript_with_unified_analysis(
                 "sentiment": {
                     "distribution": {
                         "positive": sentiment_positive,
-                        "neutral": sentiment_neutral,
-                        "negative": sentiment_negative
+                        "neutral":  sentiment_neutral,
+                        "negative": sentiment_negative,
                     },
-                    "average_score": round(total_sentiment_score / num_messages, 3),
-                    "positive_ratio": round(sentiment_positive / num_messages, 3)
+                    # mantenuto per backward-compat con test esistenti
+                    "average_score":   round(total_sentiment_score / num_messages, 3),
+                    "positive_ratio":  round(sentiment_positive    / num_messages, 3),
+
+                    # ← NUOVO: metrica corretta su scala [-1, +1]
+                    # polarity_i = sign(label) × score × confidence
+                    # Valori guida: +1 = unanimemente positivo con massima confidence
+                    #               -1 = unanimemente negativo con massima confidence
+                    #                0 = neutro oppure positivi e negativi bilanciati
+                    "average_polarity": round(total_polarity_score / num_messages, 4),
                 },
                 "toxicity": {
                     "toxic_count": toxic_count,
