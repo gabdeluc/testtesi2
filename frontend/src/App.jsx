@@ -93,6 +93,8 @@ function App() {
 
   const [openSettings, setOpenSettings]       = useState(null)
   const [showWidgetPanel, setShowWidgetPanel] = useState(false)
+  const [sidebarOpen, setSidebarOpen]         = useState(false)  // sidebar collassabile
+  const [activeView, setActiveView]           = useState('overview') // vista attiva
 
   // ── Load data ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -281,6 +283,57 @@ function App() {
   // ─── Render ───────────────────────────────────────────────────────
   return (
     <div style={S.app}>
+      {/* Layout flex: sidebar sinistra + contenuto principale */}
+      <div style={{ display:'flex', minHeight:'100vh' }}>
+
+      {/* ══ SIDEBAR ════════════════════════════════════════════════ */}
+      <nav style={{
+        ...S.sidebar,
+        width: sidebarOpen ? 200 : 56,
+      }}>
+        {/* Toggle */}
+        <button
+          onClick={() => setSidebarOpen(o => !o)}
+          style={S.sbToggle}
+          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+        >
+          {sidebarOpen ? '←' : '☰'}
+        </button>
+
+        <div style={S.sbDivider} />
+
+        {/* Voci di navigazione */}
+        {NAV_ITEMS.map(item => {
+          const isActive = activeView === item.id
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveView(item.id)}
+              style={{
+                ...S.sbItem,
+                backgroundColor: isActive ? 'rgba(0,122,255,0.15)' : 'transparent',
+                borderLeft: isActive ? '2px solid #007AFF' : '2px solid transparent',
+                color: isActive ? '#fff' : '#8e8e93',
+              }}
+              title={!sidebarOpen ? item.label : undefined}
+            >
+              <span style={{ ...S.sbIcon, color: isActive ? '#007AFF' : '#636366' }}>{item.icon}</span>
+              {sidebarOpen && (
+                <span style={{ ...S.sbLabel, color: isActive ? '#fff' : '#8e8e93' }}>{item.label}</span>
+              )}
+            </button>
+          )
+        })}
+
+        {/* Spacer + versione in fondo */}
+        <div style={{ flex:1 }} />
+        {sidebarOpen && (
+          <div style={S.sbFooter}>Meeting<br/>Intelligence</div>
+        )}
+      </nav>
+
+      {/* ══ MAIN CONTENT ═══════════════════════════════════════════ */}
+      <div style={{ flex:1, minWidth:0 }}>
 
       {/* ══ HEADER ══════════════════════════════════════════════════ */}
       <div style={S.header}>
@@ -409,100 +462,90 @@ function App() {
       )}
 
       {/* ══ WIDGET GRID ════════════════════════════════════════════ */}
-      {!loading && liveTranscript.length > 0 && (
-        <div style={S.grid}>
+      {!loading && liveTranscript.length > 0 && (() => {
 
-          {visibleWidgets.participantRoster && (
-            <Wgt id="participantRoster" title="Participant Roster" wide
-              cfg={widgetConfigs.participantRoster} participants={participants}
-              onCfg={u => updateWidgetConfig('participantRoster', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              <ParticipantRoster stats={getParticipantStats()} />
-            </Wgt>
-          )}
+        // Helper riutilizzabili per tutti i widget
+        const wgt = (id, title, wide, children) => (
+          <Wgt key={id} id={id} title={title} wide={wide}
+            cfg={widgetConfigs[id]} participants={participants}
+            onCfg={u => updateWidgetConfig(id, u)}
+            open={openSettings} setOpen={setOpenSettings}>
+            {children}
+          </Wgt>
+        )
+        const kpiMessages = wgt('messages', 'Messages', false,
+          (() => { const d = getFiltered('messages')
+            return <><div style={S.kpiVal}>{d.length}</div><div style={S.kpiLab}>messages so far</div></> })())
+        const kpiSentiment = wgt('sentiment', 'Sentiment', false,
+          (() => { const s = calcStats(getFiltered('sentiment'))
+            return <PolarityKPI polarity={s.sentiment.average_polarity} posRatio={s.sentiment.positive_ratio} /> })())
+        const kpiToxicity = wgt('toxicity', 'Toxic Messages', false,
+          (() => { const s = calcStats(getFiltered('toxicity'))
+            return <><div style={S.kpiVal}>{s.toxicity.toxic_count}</div><div style={S.kpiLab}>{(s.toxicity.toxic_ratio*100).toFixed(0)}% toxic</div></> })())
+        const wSentDist = wgt('sentimentDist', 'Sentiment Distribution', true,
+          (() => { const s = calcStats(getFiltered('sentimentDist'))
+            return <SentimentDistChart data={s.sentiment.distribution} cfg={widgetConfigs.sentimentDist} /> })())
+        const wTimeSent = wgt('timelineSentiment', 'Sentiment Timeline', true,
+          <TimelineChart messages={getFiltered('timelineSentiment')} cfg={widgetConfigs.timelineSentiment} />)
+        const wTimeTox = wgt('timelineToxicity', 'Toxicity Timeline', true,
+          <TimelineChart messages={getFiltered('timelineToxicity')} cfg={widgetConfigs.timelineToxicity} />)
+        const wGauge = wgt('toxicityGauge', 'Toxicity Severity', false,
+          (() => { const s = calcStats(getFiltered('toxicityGauge'))
+            return <ToxicityGauge score={s.toxicity.average_toxicity_score} /> })())
+        const wRoster = wgt('participantRoster', 'Participant Roster', true,
+          <ParticipantRoster stats={getParticipantStats()} />)
+        const wStream = wgt('messageStream', 'Message Stream', true,
+          <MessageStream messages={getFiltered('messageStream')} cfg={widgetConfigs.messageStream} />)
 
-          {visibleWidgets.messages && (
-            <Wgt id="messages" title="Messages"
-              cfg={widgetConfigs.messages} participants={participants}
-              onCfg={u => updateWidgetConfig('messages', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              {(() => { const d = getFiltered('messages')
-                return <><div style={S.kpiVal}>{d.length}</div><div style={S.kpiLab}>messages so far</div></> })()}
-            </Wgt>
-          )}
+        // ── Viste per sidebar ──────────────────────────────────────
+        const views = {
 
-          {visibleWidgets.sentiment && (
-            <Wgt id="sentiment" title="Sentiment"
-              cfg={widgetConfigs.sentiment} participants={participants}
-              onCfg={u => updateWidgetConfig('sentiment', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              {(() => { const s = calcStats(getFiltered('sentiment'))
-                return <PolarityKPI polarity={s.sentiment.average_polarity} posRatio={s.sentiment.positive_ratio} /> })()}
-            </Wgt>
-          )}
+          // Tutte le sezioni in ordine
+          overview: [wRoster, kpiMessages, kpiSentiment, kpiToxicity,
+                     wSentDist, wTimeSent, wTimeTox, wGauge, wStream],
 
-          {visibleWidgets.toxicity && (
-            <Wgt id="toxicity" title="Toxic Messages"
-              cfg={widgetConfigs.toxicity} participants={participants}
-              onCfg={u => updateWidgetConfig('toxicity', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              {(() => { const s = calcStats(getFiltered('toxicity'))
-                return <><div style={S.kpiVal}>{s.toxicity.toxic_count}</div><div style={S.kpiLab}>{(s.toxicity.toxic_ratio*100).toFixed(0)}% toxic</div></> })()}
-            </Wgt>
-          )}
+          // Solo widget legati al sentiment
+          sentiment: [kpiSentiment, wSentDist, wTimeSent],
 
-          {visibleWidgets.sentimentDist && (
-            <Wgt id="sentimentDist" title="Sentiment Distribution" wide
-              cfg={widgetConfigs.sentimentDist} participants={participants}
-              onCfg={u => updateWidgetConfig('sentimentDist', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              {(() => { const s = calcStats(getFiltered('sentimentDist'))
-                return <SentimentDistChart data={s.sentiment.distribution} cfg={widgetConfigs.sentimentDist} /> })()}
-            </Wgt>
-          )}
+          // Solo widget legati alla tossicità
+          toxicity: [kpiToxicity, wTimeTox, wGauge],
 
-          {visibleWidgets.timelineSentiment && (
-            <Wgt id="timelineSentiment" title="Sentiment Timeline" wide
-              cfg={widgetConfigs.timelineSentiment} participants={participants}
-              onCfg={u => updateWidgetConfig('timelineSentiment', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              <TimelineChart messages={getFiltered('timelineSentiment')} cfg={widgetConfigs.timelineSentiment} />
-            </Wgt>
-          )}
+          // Solo il roster dei partecipanti
+          participants: [wRoster],
 
-          {visibleWidgets.timelineToxicity && (
-            <Wgt id="timelineToxicity" title="Toxicity Timeline" wide
-              cfg={widgetConfigs.timelineToxicity} participants={participants}
-              onCfg={u => updateWidgetConfig('timelineToxicity', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              <TimelineChart messages={getFiltered('timelineToxicity')} cfg={widgetConfigs.timelineToxicity} />
-            </Wgt>
-          )}
+          // Solo il feed dei messaggi + contatore
+          stream: [kpiMessages, wStream],
+        }
 
-          {visibleWidgets.toxicityGauge && (
-            <Wgt id="toxicityGauge" title="Toxicity Severity"
-              cfg={widgetConfigs.toxicityGauge} participants={participants}
-              onCfg={u => updateWidgetConfig('toxicityGauge', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              {(() => { const s = calcStats(getFiltered('toxicityGauge'))
-                return <ToxicityGauge score={s.toxicity.average_toxicity_score} /> })()}
-            </Wgt>
-          )}
+        const activeWidgets = views[activeView] || views.overview
 
-          {visibleWidgets.messageStream && (
-            <Wgt id="messageStream" title="Message Stream" wide
-              cfg={widgetConfigs.messageStream} participants={participants}
-              onCfg={u => updateWidgetConfig('messageStream', u)}
-              open={openSettings} setOpen={setOpenSettings}>
-              <MessageStream messages={getFiltered('messageStream')} cfg={widgetConfigs.messageStream} />
-            </Wgt>
-          )}
-
-        </div>
-      )}
+        return (
+          <div style={S.grid}>
+            {/* Titolo vista (solo se non overview) */}
+            {activeView !== 'overview' && (
+              <div style={S.viewTitle}>
+                {NAV_ITEMS.find(n => n.id === activeView)?.icon}{' '}
+                {NAV_ITEMS.find(n => n.id === activeView)?.label}
+              </div>
+            )}
+            {activeWidgets}
+          </div>
+        )
+      })()}
+      </div>{/* /main content */}
+      </div>{/* /flex row */}
     </div>
   )
 }
+
+// NAV ITEMS — ogni voce corrisponde a una vista della dashboard
+const NAV_ITEMS = [
+  { id: 'overview',     icon: '⊞', label: 'Overview'    },
+  { id: 'sentiment',    icon: '◎', label: 'Sentiment'   },
+  { id: 'toxicity',     icon: '⚠', label: 'Toxicity'    },
+  { id: 'participants', icon: '👥', label: 'Participants' },
+  { id: 'stream',       icon: '▤', label: 'Stream'       },
+]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WIDGET WRAPPER
@@ -728,10 +771,19 @@ function MessageStream({ messages, cfg }) {
 // STYLES
 // ─────────────────────────────────────────────────────────────────────────────
 const S = {
-  app:    { minHeight:'100vh', backgroundColor:'#1c1c1e', fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif', color:'#fff', overflowX:'hidden' },
+  app:    { backgroundColor:'#1c1c1e', fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif', color:'#fff' },
+
+  // Sidebar
+  sidebar:  { position:'sticky', top:0, height:'100vh', flexShrink:0, backgroundColor:'rgba(20,20,22,0.98)', borderRight:'0.5px solid rgba(255,255,255,0.08)', display:'flex', flexDirection:'column', alignItems:'stretch', padding:'10px 0', transition:'width 0.25s ease', overflow:'hidden', zIndex:90 },
+  sbToggle: { background:'none', border:'none', color:'#8e8e93', cursor:'pointer', fontSize:18, padding:'8px 0', width:'100%', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1, marginBottom:4, transition:'color 0.2s' },
+  sbDivider:{ height:'0.5px', backgroundColor:'rgba(255,255,255,0.07)', margin:'4px 10px 8px' },
+  sbItem:   { background:'none', border:'none', borderLeft:'2px solid transparent', color:'#ebebf5', cursor:'pointer', display:'flex', alignItems:'center', gap:10, padding:'10px 14px', fontSize:13, fontWeight:500, textAlign:'left', whiteSpace:'nowrap', overflow:'hidden', width:'100%', transition:'background 0.15s' },
+  sbIcon:   { fontSize:17, flexShrink:0, width:22, textAlign:'center' },
+  sbLabel:  { fontSize:13, fontWeight:500, opacity:1, transition:'opacity 0.2s' },
+  sbFooter: { fontSize:10, color:'#3a3a3c', padding:'12px 14px', lineHeight:1.4, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.5px' },
 
   // Header
-  header: { position:'sticky', top:0, zIndex:100, backgroundColor:'rgba(28,28,30,0.96)', backdropFilter:'saturate(180%) blur(20px)', borderBottom:'0.5px solid rgba(255,255,255,0.1)' },
+  header: { position:'sticky', top:0, zIndex:95, backgroundColor:'rgba(28,28,30,0.96)', backdropFilter:'saturate(180%) blur(20px)', borderBottom:'0.5px solid rgba(255,255,255,0.1)' },
   hRow:   { maxWidth:1400, margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, padding:'12px 20px 8px' },
   hLeft:  { display:'flex', alignItems:'center', gap:12 },
   hRight: { display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' },
@@ -779,6 +831,9 @@ const S = {
   setLabel:  { fontSize:12, color:'#8e8e93', whiteSpace:'nowrap' },
   setSelect: { flex:1, backgroundColor:'rgba(255,255,255,0.1)', border:'0.5px solid rgba(255,255,255,0.15)', borderRadius:7, color:'#fff', padding:'4px 8px', fontSize:12 },
   wBody:     { padding:'10px 15px 15px' },
+
+  // Vista attiva — titolo in testa alla griglia
+  viewTitle: { gridColumn:'1/-1', fontSize:20, fontWeight:700, color:'#fff', padding:'4px 0 8px', display:'flex', alignItems:'center', gap:8 },
 
   // KPI
   kpiVal:    { fontSize:40, fontWeight:700, color:'#fff', lineHeight:1 },
