@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Bar, Line, Doughnut } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -15,510 +15,457 @@ import {
 } from 'chart.js'
 
 ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, Title, Tooltip, Legend, Filler
 )
 
 const API_URL = 'http://localhost:8000'
-const POLL_INTERVAL_MS = 15000 // 15 secondi
 
+// Velocità disponibili (moltiplicatore sul tempo reale del transcript)
+const SPEEDS = [1, 2, 5, 10, 20]
+
+// "HH:MM:SS.mmm" → secondi
+const tsToSec = (ts) => {
+  if (!ts) return 0
+  const [h, m, rest] = ts.split(':')
+  return parseInt(h) * 3600 + parseInt(m) * 60 + parseFloat(rest)
+}
+
+// secondi → "MM:SS"
+const secToLabel = (sec) => {
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP
+// ─────────────────────────────────────────────────────────────────────────────
 function App() {
-  const [meetingData, setMeetingData] = useState(null)
-  const [participants, setParticipants] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const [isPolling, setIsPolling] = useState(true)
-  const [pollingCountdown, setPollingCountdown] = useState(POLL_INTERVAL_MS / 1000)
-  const pollingRef = useRef(null)
-  const countdownRef = useRef(null)
+  // ── Data ─────────────────────────────────────────────────────────
+  const [allTranscript, setAllTranscript] = useState([])
+  const [participants, setParticipants]   = useState([])
+  const [loading, setLoading]             = useState(false)
+  const [error, setError]                 = useState(null)
 
+  // ── Playback ──────────────────────────────────────────────────────
+  // playbackIndex = numero di messaggi attualmente visibili (0 … n)
+  const [playbackIndex, setPlaybackIndex] = useState(0)
+  const [isPlaying, setIsPlaying]         = useState(false)
+  const [speed, setSpeed]                 = useState(5)
+  const timerRef  = useRef(null)
+  const indexRef  = useRef(0)   // copia sincrona per il timer
+
+  // ── UI ────────────────────────────────────────────────────────────
   const [widgetConfigs, setWidgetConfigs] = useState({
-    messages:         { participantFilter: null, color: '#FF3B30', showDetails: true },
-    sentiment:        { participantFilter: null, color: '#34C759', showDetails: true },
-    toxicity:         { participantFilter: null, color: '#FF9500', showDetails: true },
-    sentimentDist:    { participantFilter: null, color: '#007AFF', showLabels: true, animated: true },
-    toxicityGauge:    { participantFilter: null, color: '#5856D6', showDetails: true },
-    timelineSentiment:{ participantFilter: null, color: '#00C7BE', showGrid: true, showArea: true, metric: 'sentiment' },
-    timelineToxicity: { participantFilter: null, color: '#FF6B6B', showGrid: true, showArea: true, metric: 'toxicity' },
-    messageStream:    { participantFilter: null, color: '#FF2D55', limit: 30, showTimestamps: true },
-    participantRoster:{ participantFilter: null, color: '#BF5AF2', showDetails: true }
+    messages:          { participantFilter: null, color: '#FF3B30' },
+    sentiment:         { participantFilter: null, color: '#34C759' },
+    toxicity:          { participantFilter: null, color: '#FF9500' },
+    sentimentDist:     { participantFilter: null, color: '#007AFF', showLabels: true },
+    toxicityGauge:     { participantFilter: null, color: '#5856D6' },
+    timelineSentiment: { participantFilter: null, color: '#00C7BE', showGrid: true, showArea: true, metric: 'sentiment' },
+    timelineToxicity:  { participantFilter: null, color: '#FF6B6B', showGrid: true, showArea: true, metric: 'toxicity' },
+    messageStream:     { participantFilter: null, color: '#FF2D55', limit: 30, showTimestamps: true },
+    participantRoster: { participantFilter: null, color: '#BF5AF2' }
   })
 
   const [visibleWidgets, setVisibleWidgets] = useState(() => {
-    const saved = localStorage.getItem('visibleWidgets')
-    return saved ? JSON.parse(saved) : {
+    try {
+      const saved = localStorage.getItem('visibleWidgets')
+      if (saved) return JSON.parse(saved)
+    } catch { 
+      // Fall through to default if JSON.parse fails
+    }
+    
+    // ✅ Return the fallback object from INSIDE the function
+    return {
       messages: true, sentiment: true, toxicity: true, sentimentDist: true,
       toxicityGauge: true, timelineSentiment: true, timelineToxicity: true,
       messageStream: true, participantRoster: true
     }
   })
 
-  const [openSettings, setOpenSettings] = useState(null)
+  const [openSettings, setOpenSettings]       = useState(null)
   const [showWidgetPanel, setShowWidgetPanel] = useState(false)
 
-  // ─── Data fetching ────────────────────────────────────────────────
-  const loadInitialData = async (silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const respPart = await fetch(`${API_URL}/participants`)
-      const dataPart = await respPart.json()
-      setParticipants(dataPart.participants)
-
-      const response = await fetch(`${API_URL}/meeting/mtg001/analysis`)
-      if (!response.ok) throw new Error(`Status ${response.status}`)
-      const data = await response.json()
-      setMeetingData(data)
-      setLastUpdated(new Date())
-      setError(null)
-    } catch (err) {
-      setError('Unable to load meeting data')
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }
-
-  // ─── Polling setup ────────────────────────────────────────────────
-  const startPolling = () => {
-    stopPolling()
-    setPollingCountdown(POLL_INTERVAL_MS / 1000)
-
-    // Countdown visivo
-    countdownRef.current = setInterval(() => {
-      setPollingCountdown(prev => {
-        if (prev <= 1) return POLL_INTERVAL_MS / 1000
-        return prev - 1
-      })
-    }, 1000)
-
-    // Fetch reale
-    pollingRef.current = setInterval(() => {
-      loadInitialData(true) // silent = no spinner
-      setPollingCountdown(POLL_INTERVAL_MS / 1000)
-    }, POLL_INTERVAL_MS)
-  }
-
-  const stopPolling = () => {
-    if (pollingRef.current)   clearInterval(pollingRef.current)
-    if (countdownRef.current) clearInterval(countdownRef.current)
-  }
-
+  // ── Load data ─────────────────────────────────────────────────────
   useEffect(() => {
-    loadInitialData()
-    return () => stopPolling()
+    const load = async () => {
+      setLoading(true)
+      try {
+        const [rP, rM] = await Promise.all([
+          fetch(`${API_URL}/participants`),
+          fetch(`${API_URL}/meeting/mtg001/analysis`)
+        ])
+        if (!rM.ok) throw new Error(`HTTP ${rM.status}`)
+        const [dP, dM] = await Promise.all([rP.json(), rM.json()])
+        setParticipants(dP.participants)
+        setAllTranscript(dM.transcript)
+      } catch {
+        setError('Unable to load meeting data')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
   }, [])
 
   useEffect(() => {
-    if (isPolling) startPolling()
-    else stopPolling()
-    return () => stopPolling()
-  }, [isPolling])
-
-  useEffect(() => {
-    localStorage.setItem('visibleWidgets', JSON.stringify(visibleWidgets))
+    try { localStorage.setItem('visibleWidgets', JSON.stringify(visibleWidgets)) } catch {}
   }, [visibleWidgets])
 
-  // ─── Helpers ──────────────────────────────────────────────────────
-  const updateWidgetConfig = (widgetId, updates) => {
-    setWidgetConfigs(prev => ({ ...prev, [widgetId]: { ...prev[widgetId], ...updates } }))
-  }
+  // ── Playback engine ───────────────────────────────────────────────
+  // Usa i timestamp reali (campo `from`) per calcolare il delay tra messaggi:
+  //   delay_ms = (ts[i+1] - ts[i]) * 1000 / speed
+  // minimo 80 ms per non sovraccaricare React.
 
-  const toggleWidgetVisibility = (widgetId) => {
-    setVisibleWidgets(prev => ({ ...prev, [widgetId]: !prev[widgetId] }))
-  }
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+  }, [])
 
-  const getFilteredTranscript = (widgetId) => {
-    if (!meetingData || !meetingData.transcript) return []
-    const config = widgetConfigs[widgetId]
-    if (!config.participantFilter) return meetingData.transcript
-    const participant = participants.find(p => p.id === config.participantFilter)
-    if (!participant) return meetingData.transcript
-    return meetingData.transcript.filter(entry => entry.nickname === participant.name)
-  }
+  const scheduleNext = useCallback((idx, transcript, spd) => {
+    if (idx >= transcript.length) { setIsPlaying(false); return }
+    const gap = transcript[idx + 1]
+      ? tsToSec(transcript[idx + 1].from) - tsToSec(transcript[idx].from)
+      : 1
+    const delay = Math.max(80, (gap * 1000) / spd)
+    timerRef.current = setTimeout(() => {
+      const next = idx + 1
+      indexRef.current = next
+      setPlaybackIndex(next)
+      scheduleNext(next, transcript, spd)
+    }, delay)
+  }, [])
 
-  const calculateStats = (transcript) => {
-    if (!transcript || transcript.length === 0) {
-      return {
-        total_messages: 0,
-        sentiment: {
-          distribution: { positive: 0, neutral: 0, negative: 0 },
-          average_score: 0,
-          positive_ratio: 0,
-          average_polarity: 0   // range [-1, +1]
-        },
-        toxicity: { toxic_count: 0, toxic_ratio: 0, severity_distribution: { low: 0, medium: 0, high: 0 }, average_toxicity_score: 0 }
+  useEffect(() => {
+    if (isPlaying && allTranscript.length > 0) {
+      if (indexRef.current >= allTranscript.length) {
+        indexRef.current = 0
+        setPlaybackIndex(0)
       }
+      scheduleNext(indexRef.current, allTranscript, speed)
+    } else {
+      stopTimer()
     }
+    return stopTimer
+  }, [isPlaying, allTranscript, speed, scheduleNext, stopTimer])
 
-    const total = transcript.length
+  const handlePlayPause = () => setIsPlaying(p => !p)
 
-    // Mappa segno per label — cuore della formula polarity
-    const LABEL_SIGN = { positive: 1, neutral: 0, negative: -1 }
+  const handleReset = () => {
+    stopTimer()
+    setIsPlaying(false)
+    indexRef.current = 0
+    setPlaybackIndex(0)
+  }
 
-    let sentimentScoreSum = 0
-    let polaritySum       = 0   // Σ sign(label) × score × confidence
-    let toxicityScoreSum  = 0
-    const sentimentDist   = { positive: 0, neutral: 0, negative: 0 }
-    const severityDist    = { low: 0, medium: 0, high: 0 }
-    let toxicCount        = 0
+  const handleSpeedChange = (s) => {
+    setSpeed(s)
+    if (isPlaying) {
+      stopTimer()
+      setIsPlaying(false)
+      setTimeout(() => setIsPlaying(true), 30)
+    }
+  }
 
-    transcript.forEach(entry => {
-      const { label, score, confidence } = entry.sentiment
+  // ── Vista parziale ────────────────────────────────────────────────
+  const liveTranscript = allTranscript.slice(0, playbackIndex)
+  const total          = allTranscript.length
+  const progressPct    = total > 0 ? (playbackIndex / total) * 100 : 0
+  const isFinished     = playbackIndex >= total && total > 0
+  const currentTs      = liveTranscript.length > 0
+    ? secToLabel(tsToSec(liveTranscript[liveTranscript.length - 1].from)) : '00:00'
+  const totalTs        = total > 0
+    ? secToLabel(tsToSec(allTranscript[total - 1].from)) : '00:00'
 
-      // Conteggi distribuzione
-      if (sentimentDist[label] !== undefined) sentimentDist[label]++
+  // ── Helpers ───────────────────────────────────────────────────────
+  const updateWidgetConfig   = (id, u) => setWidgetConfigs(p => ({ ...p, [id]: { ...p[id], ...u } }))
+  const toggleWidget         = (id)    => setVisibleWidgets(p => ({ ...p, [id]: !p[id] }))
 
-      // Score grezzo (mantenuto per compat)
-      sentimentScoreSum += score
+  const getFiltered = (widgetId) => {
+    const pf = widgetConfigs[widgetId].participantFilter
+    if (!pf) return liveTranscript
+    const p = participants.find(x => x.id === pf)
+    return p ? liveTranscript.filter(e => e.nickname === p.name) : liveTranscript
+  }
 
-      // ── Polarity pesata per confidence ──────────────────────────
-      // Formula: sign(label) × score × confidence  →  [-1, +1]
-      // Motivazione:
-      //   • sign assegna direzione (positivo/negativo)
-      //   • score è la probabilità della classe vincente
-      //   • confidence pesa quanto il modello è sicuro:
-      //     predizioni incerte contribuiscono meno all'aggregato
-      const sign = LABEL_SIGN[label] ?? 0
-      polaritySum += sign * score * confidence
-      // ────────────────────────────────────────────────────────────
-
-      if (entry.toxicity.is_toxic) toxicCount++
-      const severity = entry.toxicity.severity
-      if (severityDist[severity] !== undefined) severityDist[severity]++
-      toxicityScoreSum += entry.toxicity.toxicity_score
+  const calcStats = (tr) => {
+    if (!tr?.length) return {
+      total_messages: 0,
+      sentiment: { distribution: { positive: 0, neutral: 0, negative: 0 }, average_score: 0, positive_ratio: 0, average_polarity: 0 },
+      toxicity:  { toxic_count: 0, toxic_ratio: 0, severity_distribution: { low: 0, medium: 0, high: 0 }, average_toxicity_score: 0 }
+    }
+    const SIGN = { positive: 1, neutral: 0, negative: -1 }
+    let sc = 0, pol = 0, tx = 0
+    const d = { positive: 0, neutral: 0, negative: 0 }
+    const sv = { low: 0, medium: 0, high: 0 }
+    let tc = 0
+    tr.forEach(e => {
+      const { label, score, confidence } = e.sentiment
+      if (d[label] !== undefined) d[label]++
+      sc  += score
+      pol += (SIGN[label] ?? 0) * score * confidence
+      if (e.toxicity.is_toxic) tc++
+      if (sv[e.toxicity.severity] !== undefined) sv[e.toxicity.severity]++
+      tx  += e.toxicity.toxicity_score
     })
-
+    const n = tr.length
     return {
-      total_messages: total,
-      sentiment: {
-        distribution:     sentimentDist,
-        average_score:    sentimentScoreSum / total,   // mantenuto per compat
-        positive_ratio:   sentimentDist.positive / total,
-        average_polarity: polaritySum / total           // metrica principale [-1, +1]
-      },
-      toxicity: {
-        toxic_count:            toxicCount,
-        toxic_ratio:            toxicCount / total,
-        severity_distribution:  severityDist,
-        average_toxicity_score: toxicityScoreSum / total
-      }
+      total_messages: n,
+      sentiment: { distribution: d, average_score: sc/n, positive_ratio: d.positive/n, average_polarity: pol/n },
+      toxicity:  { toxic_count: tc, toxic_ratio: tc/n, severity_distribution: sv, average_toxicity_score: tx/n }
     }
   }
 
-  // ─── Per-participant stats for roster ────────────────────────────
-  const getParticipantStats = () => {
-    if (!meetingData?.transcript || !participants.length) return []
-    return participants.map(p => {
-      const msgs = meetingData.transcript.filter(e => e.nickname === p.name)
-      const stats = calculateStats(msgs)
-      return { ...p, stats, msgCount: msgs.length }
+  const getParticipantStats = () =>
+    participants.map(p => {
+      const msgs = liveTranscript.filter(e => e.nickname === p.name)
+      return { ...p, stats: calcStats(msgs) }
     })
-  }
 
-  // ─── Widget sections (con descrizioni dettagliate) ────────────────
-  const widgetSections = [
-    {
-      title: 'Participants',
-      widgets: [
-        {
-          id: 'participantRoster',
-          name: 'Participant Roster',
-          description: 'Shows each participant\'s sentiment breakdown (positive / neutral / negative) and toxicity rate as individual stat cards — ideal for spotting who is driving the tone of the meeting.'
-        }
-      ]
-    },
-    {
-      title: 'Key Metrics',
-      widgets: [
-        {
-          id: 'messages',
-          name: 'Messages',
-          description: 'Displays the total number of messages exchanged in the meeting. Use the per-participant filter to count only one speaker\'s contributions.'
-        },
-        {
-          id: 'sentiment',
-          name: 'Sentiment Overview',
-          description: 'Shows the average sentiment score (0 – 100 %) and the percentage of positive messages. A high score means the overall mood of the conversation is constructive.'
-        },
-        {
-          id: 'toxicity',
-          name: 'Toxic Messages',
-          description: 'Counts how many messages were classified as toxic and what percentage of the total they represent. Toggle this off if your dataset contains no aggressive language.'
-        }
-      ]
-    },
-    {
-      title: 'Analytics',
-      widgets: [
-        {
-          id: 'sentimentDist',
-          name: 'Sentiment Distribution',
-          description: 'Horizontal stacked bar showing the proportion of positive, neutral and negative messages. Useful for a quick at-a-glance snapshot of the conversational balance.'
-        },
-        {
-          id: 'timelineSentiment',
-          name: 'Sentiment Timeline',
-          description: 'Line chart plotting sentiment score over time (one point per message). Lets you identify emotional peaks, dips, and trends across the duration of the meeting.'
-        },
-        {
-          id: 'timelineToxicity',
-          name: 'Toxicity Timeline',
-          description: 'Line chart plotting the toxicity score over time. Highlights moments when aggressive or inappropriate language spiked during the conversation.'
-        },
-        {
-          id: 'toxicityGauge',
-          name: 'Toxicity Severity',
-          description: 'Doughnut gauge summarising the current average toxicity level (low / medium / high). Gives an immediate red-flag indicator without diving into the raw numbers.'
-        }
-      ]
-    },
-    {
-      title: 'Content',
-      widgets: [
-        {
-          id: 'messageStream',
-          name: 'Message Stream',
-          description: 'Scrollable feed of recent messages enriched with colour-coded sentiment and toxicity badges. The most recent messages appear at the top so you can follow the live conversation.'
-        }
-      ]
-    }
+  // ── Widget sections ───────────────────────────────────────────────
+  const sections = [
+    { title: 'Participants', items: [
+      { id: 'participantRoster', name: 'Participant Roster',
+        desc: 'Per-participant sentiment breakdown and weighted polarity [−1,+1]. Updates live as the meeting progresses.' }
+    ]},
+    { title: 'Key Metrics', items: [
+      { id: 'messages',  name: 'Messages',          desc: 'Running count of messages seen so far during the playback.' },
+      { id: 'sentiment', name: 'Sentiment Overview', desc: 'Weighted polarity on a bipolar scale [−1,+1], updated in real time as new messages arrive.' },
+      { id: 'toxicity',  name: 'Toxic Messages',    desc: 'Count and % of toxic messages detected so far. Toggle off if the dataset has no aggressive language.' }
+    ]},
+    { title: 'Analytics', items: [
+      { id: 'sentimentDist',     name: 'Sentiment Distribution', desc: 'Stacked bar of positive/neutral/negative proportion accumulated so far.' },
+      { id: 'timelineSentiment', name: 'Sentiment Timeline',     desc: 'Line chart of sentiment score — each point is one message. Grows as the meeting plays.' },
+      { id: 'timelineToxicity',  name: 'Toxicity Timeline',      desc: 'Line chart of toxicity score — highlights aggressive spikes in real time.' },
+      { id: 'toxicityGauge',     name: 'Toxicity Severity',      desc: 'Doughnut gauge of current average toxicity. Distinguishes low/medium/high without digging into numbers.' }
+    ]},
+    { title: 'Content', items: [
+      { id: 'messageStream', name: 'Message Stream',
+        desc: 'Live feed of incoming messages with colour-coded sentiment and toxicity badges. New messages appear at the top.' }
+    ]}
   ]
-
-  // ─── Formatted last-updated string ───────────────────────────────
-  const formatTime = (date) => {
-    if (!date) return '—'
-    return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  }
 
   // ─── Render ───────────────────────────────────────────────────────
   return (
-    <div style={styles.appContainer}>
+    <div style={S.app}>
 
-      {/* ── HEADER ── */}
-      <div style={styles.header}>
-        <div style={styles.headerContent}>
-          <div style={styles.headerLeft}>
-            <div style={styles.logoCircle}>MI</div>
-            <div style={styles.headerText}>
-              <h1 style={styles.title}>Meeting Intelligence</h1>
-              <p style={styles.subtitle}>MTG-001 · Unique Design</p>
+      {/* ══ HEADER ══════════════════════════════════════════════════ */}
+      <div style={S.header}>
+        <div style={S.hRow}>
+          {/* Logo */}
+          <div style={S.hLeft}>
+            <div style={S.logo}>MI</div>
+            <div>
+              <h1 style={S.title}>Meeting Intelligence</h1>
+              <p style={S.subtitle}>MTG-001 · Live Playback</p>
             </div>
           </div>
 
-          {/* Live indicator + controls */}
-          <div style={styles.headerRight}>
-            <div style={styles.liveBlock}>
-              <div style={{ ...styles.liveDot, backgroundColor: isPolling ? '#34C759' : '#636366' }} />
-              <span style={styles.liveLabel}>
-                {isPolling ? `Auto-refresh in ${pollingCountdown}s` : 'Paused'}
-              </span>
-              {lastUpdated && (
-                <span style={styles.lastUpdatedLabel}>· Updated {formatTime(lastUpdated)}</span>
-              )}
+          {/* Controlli */}
+          <div style={S.hRight}>
+            <button onClick={handleReset} style={S.ctrlBtn} title="Restart">⏮</button>
+            <button
+              onClick={handlePlayPause}
+              style={{ ...S.ctrlBtn, backgroundColor: isPlaying ? '#FF9500' : '#34C759', minWidth: 76 }}
+            >
+              {isPlaying ? '⏸ Pause' : isFinished ? '↺ Replay' : '▶ Play'}
+            </button>
+
+            {/* Speed */}
+            <div style={S.speedGroup}>
+              {SPEEDS.map(s => (
+                <button key={s} onClick={() => handleSpeedChange(s)}
+                  style={{ ...S.speedBtn, ...(speed === s ? S.speedActive : {}) }}>
+                  {s}×
+                </button>
+              ))}
             </div>
 
-            <button
-              onClick={() => setIsPolling(p => !p)}
-              style={{ ...styles.controlBtn, backgroundColor: isPolling ? '#3a3a3c' : '#007AFF' }}
-              title={isPolling ? 'Pause auto-refresh' : 'Resume auto-refresh'}
-            >
-              {isPolling ? '⏸' : '▶'}
-            </button>
+            {/* Timestamp */}
+            <div style={S.tsBlock}>
+              <span style={S.tsCurr}>{currentTs}</span>
+              <span style={{ color: '#636366', fontSize: 12 }}> / </span>
+              <span style={S.tsTotal}>{totalTs}</span>
+            </div>
 
-            <button
-              onClick={() => loadInitialData(false)}
-              style={{ ...styles.controlBtn, backgroundColor: '#3a3a3c' }}
-              title="Refresh now"
-            >
-              ↻
-            </button>
-
-            <button onClick={() => setShowWidgetPanel(!showWidgetPanel)} style={styles.widgetToggleBtn}>
-              <span style={styles.widgetToggleIcon}>⚙️</span>
-              <span style={styles.widgetToggleText}>Customize</span>
+            {/* Customize */}
+            <button onClick={() => setShowWidgetPanel(v => !v)} style={S.custBtn}>
+              ⚙️ <span style={{ marginLeft: 4 }}>Customize</span>
             </button>
           </div>
+        </div>
+
+        {/* Progress bar */}
+        <div style={S.barOuter}>
+          <div style={{
+            ...S.barInner,
+            width: `${progressPct}%`,
+            backgroundColor: isFinished ? '#34C759' : isPlaying ? '#007AFF' : '#636366'
+          }} />
+        </div>
+        <div style={S.barStats}>
+          <span>{playbackIndex} / {total} messages</span>
+          <span style={{ color: isPlaying ? '#007AFF' : isFinished ? '#34C759' : '#636366' }}>
+            {isPlaying ? `● Live  ${speed}×` : isFinished ? '✓ Completed' : '⏸ Paused'}
+          </span>
         </div>
       </div>
 
-      {/* ── CUSTOMIZE PANEL ── */}
+      {/* ══ CUSTOMIZE PANEL ════════════════════════════════════════ */}
       {showWidgetPanel && (
-        <div style={styles.widgetPanelOverlay} onClick={() => setShowWidgetPanel(false)}>
-          <div style={styles.widgetPanelContainer} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.widgetPanelHeader}>
-              <h2 style={styles.widgetPanelTitle}>Customize Dashboard</h2>
-              <button onClick={() => setShowWidgetPanel(false)} style={styles.widgetPanelCloseBtn}>Close</button>
+        <div style={S.overlayBg} onClick={() => setShowWidgetPanel(false)}>
+          <div style={S.sidePanel} onClick={e => e.stopPropagation()}>
+            <div style={S.spHead}>
+              <span style={S.spTitle}>Customize Dashboard</span>
+              <button onClick={() => setShowWidgetPanel(false)} style={S.spClose}>Close</button>
             </div>
-
-            <div style={styles.widgetPanelContent}>
-              {widgetSections.map((section, sectionIdx) => (
-                <div key={section.title} style={styles.widgetSection}>
-                  <div style={styles.sectionHeader}>{section.title}</div>
-                  <div style={styles.sectionContent}>
-                    {section.widgets.map((widget, widgetIdx) => (
-                      <div key={widget.id}>
-                        <div
-                          style={styles.widgetRow}
-                          onClick={() => toggleWidgetVisibility(widget.id)}
-                        >
-                          <div style={styles.widgetRowLeft}>
-                            <div style={styles.widgetRowTitle}>{widget.name}</div>
-                            <div style={styles.widgetRowDescription}>{widget.description}</div>
-                          </div>
-                          <div style={styles.widgetRowRight}>
-                            <button
-                              style={{
-                                ...styles.uniqueToggle,
-                                backgroundColor: visibleWidgets[widget.id] ? '#007AFF' : '#3a3a3c',
-                                color: visibleWidgets[widget.id] ? '#fff' : '#8e8e93'
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                toggleWidgetVisibility(widget.id)
-                              }}
-                            >
-                              <span style={styles.toggleText}>
-                                {visibleWidgets[widget.id] ? 'ON' : 'OFF'}
-                              </span>
-                            </button>
-                          </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {sections.map(sec => (
+                <div key={sec.title}>
+                  <div style={S.secLabel}>{sec.title}</div>
+                  {sec.items.map((w, wi) => (
+                    <div key={w.id}>
+                      <div style={S.wRow} onClick={() => toggleWidget(w.id)}>
+                        <div style={{ flex: 1 }}>
+                          <div style={S.wName}>{w.name}</div>
+                          <div style={S.wDesc}>{w.desc}</div>
                         </div>
-                        {widgetIdx < section.widgets.length - 1 && <div style={styles.separator} />}
+                        <button
+                          style={{ ...S.togBtn, backgroundColor: visibleWidgets[w.id] ? '#007AFF' : '#3a3a3c', color: visibleWidgets[w.id] ? '#fff' : '#8e8e93' }}
+                          onClick={e => { e.stopPropagation(); toggleWidget(w.id) }}
+                        >
+                          {visibleWidgets[w.id] ? 'ON' : 'OFF'}
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                      {wi < sec.items.length - 1 && <div style={S.div} />}
+                    </div>
+                  ))}
                 </div>
               ))}
-
-              <div style={styles.widgetPanelFooter}>
-                <p style={styles.footerText}>
-                  {Object.values(visibleWidgets).filter(Boolean).length} of {Object.keys(visibleWidgets).length} widgets enabled
-                </p>
-              </div>
+            </div>
+            <div style={S.spFoot}>
+              {Object.values(visibleWidgets).filter(Boolean).length} / {Object.keys(visibleWidgets).length} widgets enabled
             </div>
           </div>
         </div>
       )}
 
-      {/* ── ERROR ── */}
-      {error && (
-        <div style={styles.errorBanner}>
-          <span style={styles.errorIcon}>!</span>
-          <span>{error}</span>
-        </div>
-      )}
+      {/* ══ ERROR ══════════════════════════════════════════════════ */}
+      {error && <div style={S.errBanner}>⚠ {error}</div>}
 
-      {/* ── LOADING ── */}
+      {/* ══ LOADING ════════════════════════════════════════════════ */}
       {loading && (
-        <div style={styles.loadingContainer}>
-          <div style={styles.spinner}></div>
-          <p style={styles.loadingText}>Loading...</p>
+        <div style={S.loadBox}>
+          <div style={S.spinner} />
+          <p style={{ color: '#8e8e93', marginTop: 12 }}>Loading meeting data…</p>
         </div>
       )}
 
-      {/* ── WIDGET GRID ── */}
-      {!loading && meetingData && (
-        <div style={styles.widgetGrid}>
+      {/* ══ EMPTY STATE ════════════════════════════════════════════ */}
+      {!loading && !error && total > 0 && playbackIndex === 0 && !isPlaying && (
+        <div style={S.emptyBox}>
+          <div style={{ fontSize: 52, color: '#3a3a3c' }}>▶</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', marginTop: 8 }}>Ready to play</div>
+          <div style={{ fontSize: 14, color: '#8e8e93', textAlign: 'center', lineHeight: 1.6, maxWidth: 360 }}>
+            {total} messages · {totalTs} meeting duration<br />
+            Press <strong style={{ color: '#fff' }}>Play</strong> to watch the meeting unfold in real time.
+            Use the speed selector to go faster.
+          </div>
+          <button onClick={handlePlayPause} style={S.bigPlay}>▶ Start Playback</button>
+        </div>
+      )}
 
-          {/* Participant Roster — full width */}
+      {/* ══ WIDGET GRID ════════════════════════════════════════════ */}
+      {!loading && liveTranscript.length > 0 && (
+        <div style={S.grid}>
+
           {visibleWidgets.participantRoster && (
-            <CustomizableWidget
-              widgetId="participantRoster"
-              title="Participant Roster"
-              config={widgetConfigs.participantRoster}
-              participants={participants}
-              onConfigChange={(u) => updateWidgetConfig('participantRoster', u)}
-              openSettings={openSettings}
-              setOpenSettings={setOpenSettings}
-              wide
-            >
-              <ParticipantRoster participantStats={getParticipantStats()} />
-            </CustomizableWidget>
+            <Wgt id="participantRoster" title="Participant Roster" wide
+              cfg={widgetConfigs.participantRoster} participants={participants}
+              onCfg={u => updateWidgetConfig('participantRoster', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              <ParticipantRoster stats={getParticipantStats()} />
+            </Wgt>
           )}
 
           {visibleWidgets.messages && (
-            <CustomizableWidget widgetId="messages" title="Messages" config={widgetConfigs.messages} participants={participants} onConfigChange={(u) => updateWidgetConfig('messages', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
-              {(() => {
-                const data = getFilteredTranscript('messages')
-                return <><div style={styles.kpiValue}>{data.length}</div><div style={styles.kpiLabel}>Total messages</div></>
-              })()}
-            </CustomizableWidget>
+            <Wgt id="messages" title="Messages"
+              cfg={widgetConfigs.messages} participants={participants}
+              onCfg={u => updateWidgetConfig('messages', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              {(() => { const d = getFiltered('messages')
+                return <><div style={S.kpiVal}>{d.length}</div><div style={S.kpiLab}>messages so far</div></> })()}
+            </Wgt>
           )}
 
           {visibleWidgets.sentiment && (
-            <CustomizableWidget widgetId="sentiment" title="Sentiment" config={widgetConfigs.sentiment} participants={participants} onConfigChange={(u) => updateWidgetConfig('sentiment', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
-              {(() => {
-                const data  = getFilteredTranscript('sentiment')
-                const stats = calculateStats(data)
-                return <PolarityKPI polarity={stats.sentiment.average_polarity} positiveRatio={stats.sentiment.positive_ratio} />
-              })()}
-            </CustomizableWidget>
+            <Wgt id="sentiment" title="Sentiment"
+              cfg={widgetConfigs.sentiment} participants={participants}
+              onCfg={u => updateWidgetConfig('sentiment', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              {(() => { const s = calcStats(getFiltered('sentiment'))
+                return <PolarityKPI polarity={s.sentiment.average_polarity} posRatio={s.sentiment.positive_ratio} /> })()}
+            </Wgt>
           )}
 
           {visibleWidgets.toxicity && (
-            <CustomizableWidget widgetId="toxicity" title="Toxic Messages" config={widgetConfigs.toxicity} participants={participants} onConfigChange={(u) => updateWidgetConfig('toxicity', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
-              {(() => {
-                const data = getFilteredTranscript('toxicity')
-                const stats = calculateStats(data)
-                return <><div style={styles.kpiValue}>{stats.toxicity.toxic_count}</div><div style={styles.kpiLabel}>{(stats.toxicity.toxic_ratio * 100).toFixed(0)}% toxic</div></>
-              })()}
-            </CustomizableWidget>
+            <Wgt id="toxicity" title="Toxic Messages"
+              cfg={widgetConfigs.toxicity} participants={participants}
+              onCfg={u => updateWidgetConfig('toxicity', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              {(() => { const s = calcStats(getFiltered('toxicity'))
+                return <><div style={S.kpiVal}>{s.toxicity.toxic_count}</div><div style={S.kpiLab}>{(s.toxicity.toxic_ratio*100).toFixed(0)}% toxic</div></> })()}
+            </Wgt>
           )}
 
           {visibleWidgets.sentimentDist && (
-            <CustomizableWidget widgetId="sentimentDist" title="Sentiment Distribution" config={widgetConfigs.sentimentDist} participants={participants} onConfigChange={(u) => updateWidgetConfig('sentimentDist', u)} openSettings={openSettings} setOpenSettings={setOpenSettings} wide>
-              {(() => {
-                const data = getFilteredTranscript('sentimentDist')
-                const stats = calculateStats(data)
-                return <SentimentDistributionChartJS data={stats.sentiment.distribution} config={widgetConfigs.sentimentDist} />
-              })()}
-            </CustomizableWidget>
+            <Wgt id="sentimentDist" title="Sentiment Distribution" wide
+              cfg={widgetConfigs.sentimentDist} participants={participants}
+              onCfg={u => updateWidgetConfig('sentimentDist', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              {(() => { const s = calcStats(getFiltered('sentimentDist'))
+                return <SentimentDistChart data={s.sentiment.distribution} cfg={widgetConfigs.sentimentDist} /> })()}
+            </Wgt>
           )}
 
           {visibleWidgets.timelineSentiment && (
-            <CustomizableWidget widgetId="timelineSentiment" title="Sentiment Timeline" config={widgetConfigs.timelineSentiment} participants={participants} onConfigChange={(u) => updateWidgetConfig('timelineSentiment', u)} openSettings={openSettings} setOpenSettings={setOpenSettings} wide>
-              {(() => {
-                const data = getFilteredTranscript('timelineSentiment')
-                return <TimelineChartJS messages={data} config={widgetConfigs.timelineSentiment} />
-              })()}
-            </CustomizableWidget>
+            <Wgt id="timelineSentiment" title="Sentiment Timeline" wide
+              cfg={widgetConfigs.timelineSentiment} participants={participants}
+              onCfg={u => updateWidgetConfig('timelineSentiment', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              <TimelineChart messages={getFiltered('timelineSentiment')} cfg={widgetConfigs.timelineSentiment} />
+            </Wgt>
           )}
 
           {visibleWidgets.timelineToxicity && (
-            <CustomizableWidget widgetId="timelineToxicity" title="Toxicity Timeline" config={widgetConfigs.timelineToxicity} participants={participants} onConfigChange={(u) => updateWidgetConfig('timelineToxicity', u)} openSettings={openSettings} setOpenSettings={setOpenSettings} wide>
-              {(() => {
-                const data = getFilteredTranscript('timelineToxicity')
-                return <TimelineChartJS messages={data} config={widgetConfigs.timelineToxicity} />
-              })()}
-            </CustomizableWidget>
+            <Wgt id="timelineToxicity" title="Toxicity Timeline" wide
+              cfg={widgetConfigs.timelineToxicity} participants={participants}
+              onCfg={u => updateWidgetConfig('timelineToxicity', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              <TimelineChart messages={getFiltered('timelineToxicity')} cfg={widgetConfigs.timelineToxicity} />
+            </Wgt>
           )}
 
           {visibleWidgets.toxicityGauge && (
-            <CustomizableWidget widgetId="toxicityGauge" title="Toxicity Severity" config={widgetConfigs.toxicityGauge} participants={participants} onConfigChange={(u) => updateWidgetConfig('toxicityGauge', u)} openSettings={openSettings} setOpenSettings={setOpenSettings}>
-              {(() => {
-                const data = getFilteredTranscript('toxicityGauge')
-                const stats = calculateStats(data)
-                return <ToxicityGaugeChartJS score={stats.toxicity.average_toxicity_score} config={widgetConfigs.toxicityGauge} />
-              })()}
-            </CustomizableWidget>
+            <Wgt id="toxicityGauge" title="Toxicity Severity"
+              cfg={widgetConfigs.toxicityGauge} participants={participants}
+              onCfg={u => updateWidgetConfig('toxicityGauge', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              {(() => { const s = calcStats(getFiltered('toxicityGauge'))
+                return <ToxicityGauge score={s.toxicity.average_toxicity_score} /> })()}
+            </Wgt>
           )}
 
           {visibleWidgets.messageStream && (
-            <CustomizableWidget widgetId="messageStream" title="Message Stream" config={widgetConfigs.messageStream} participants={participants} onConfigChange={(u) => updateWidgetConfig('messageStream', u)} openSettings={openSettings} setOpenSettings={setOpenSettings} wide>
-              {(() => {
-                const data = getFilteredTranscript('messageStream')
-                return <MessageStream messages={data.slice(0, widgetConfigs.messageStream.limit)} config={widgetConfigs.messageStream} />
-              })()}
-            </CustomizableWidget>
+            <Wgt id="messageStream" title="Message Stream" wide
+              cfg={widgetConfigs.messageStream} participants={participants}
+              onCfg={u => updateWidgetConfig('messageStream', u)}
+              open={openSettings} setOpen={setOpenSettings}>
+              <MessageStream messages={getFiltered('messageStream')} cfg={widgetConfigs.messageStream} />
+            </Wgt>
           )}
+
         </div>
       )}
     </div>
@@ -526,146 +473,107 @@ function App() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POLARITY KPI COMPONENT
-// Visualizza average_polarity su scala bipolare [-1, +1]
+// WIDGET WRAPPER
 // ─────────────────────────────────────────────────────────────────────────────
-function PolarityKPI({ polarity, positiveRatio }) {
-  const p = polarity ?? 0
+function Wgt({ id, title, children, wide, cfg, participants, onCfg, open, setOpen }) {
+  const isOpen = open === id
+  return (
+    <div style={{ ...S.widget, ...(wide ? S.widgetWide : {}) }}>
+      <div style={S.wHead}>
+        <span style={S.wTitle}>{title}</span>
+        <button onClick={() => setOpen(isOpen ? null : id)} style={S.wBtn}>{isOpen ? '✕' : '⋯'}</button>
+      </div>
+      {isOpen && (
+        <div style={S.setPanel}>
+          <span style={S.setLabel}>Participant</span>
+          <select value={cfg.participantFilter || ''} onChange={e => onCfg({ participantFilter: e.target.value || null })} style={S.setSelect}>
+            <option value="">All</option>
+            {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={S.wBody}>{children}</div>
+    </div>
+  )
+}
 
-  // Colore: verde se positivo, rosso se negativo, giallo se neutro
-  const absP = Math.abs(p)
-  const color = p > 0.05
-    ? `rgb(${Math.round(52 - absP * 20)}, ${Math.round(199 - absP * 20)}, ${Math.round(89 + absP * 30)})`
-    : p < -0.05
-    ? `rgb(${Math.round(255)}, ${Math.round(59 + absP * 30)}, ${Math.round(48)})`
-    : '#FFCC00'
-
-  // Posizione del cursore sulla barra [-1 → 0%, +1 → 100%]
-  const cursorPct = ((p + 1) / 2) * 100
-
-  // Etichetta testuale
-  const label =
-    p >  0.5 ? 'Very Positive' :
-    p >  0.1 ? 'Positive'      :
-    p > -0.1 ? 'Neutral'       :
-    p > -0.5 ? 'Negative'      : 'Very Negative'
-
+// ─────────────────────────────────────────────────────────────────────────────
+// POLARITY KPI
+// ─────────────────────────────────────────────────────────────────────────────
+function PolarityKPI({ polarity, posRatio }) {
+  const p     = polarity ?? 0
+  const color = p >  0.05 ? '#34C759' : p < -0.05 ? '#FF3B30' : '#FFCC00'
+  const label = p >  0.5  ? 'Very Positive' : p >  0.1 ? 'Positive'
+              : p < -0.5  ? 'Very Negative' : p < -0.1 ? 'Negative' : 'Neutral'
+  const cur   = ((p + 1) / 2) * 100
   return (
     <div style={{ padding: '4px 0' }}>
-      {/* Valore principale */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-        <div style={{ fontSize: '36px', fontWeight: '700', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {p >= 0 ? '+' : ''}{p.toFixed(3)}
-        </div>
+      <div style={{ fontSize: 36, fontWeight: 700, color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+        {p >= 0 ? '+' : ''}{p.toFixed(3)}
       </div>
-      <div style={{ fontSize: '12px', color, fontWeight: '600', marginTop: '2px' }}>{label}</div>
-
-      {/* Barra polare [-1 … 0 … +1] */}
-      <div style={{ marginTop: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#636366', marginBottom: '4px' }}>
+      <div style={{ fontSize: 12, color, fontWeight: 600, marginTop: 2 }}>{label}</div>
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#636366', marginBottom: 4 }}>
           <span>−1</span><span style={{ color: '#8e8e93' }}>Polarity scale</span><span>+1</span>
         </div>
-        <div style={{ position: 'relative', height: '6px', borderRadius: '3px', background: 'linear-gradient(to right, #FF3B30 0%, #FFCC00 50%, #34C759 100%)' }}>
-          {/* Zero-line */}
-          <div style={{ position: 'absolute', left: '50%', top: '-2px', width: '1px', height: '10px', backgroundColor: 'rgba(255,255,255,0.3)' }} />
-          {/* Cursore */}
-          <div style={{
-            position: 'absolute', left: `${cursorPct}%`, top: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '12px', height: '12px', borderRadius: '50%',
-            backgroundColor: color, border: '2px solid #1c1c1e',
-            boxShadow: `0 0 6px ${color}`,
-            transition: 'left 0.4s ease'
-          }} />
+        <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'linear-gradient(to right,#FF3B30,#FFCC00 50%,#34C759)' }}>
+          <div style={{ position: 'absolute', left: '50%', top: -2, width: 1, height: 10, backgroundColor: 'rgba(255,255,255,0.25)' }} />
+          <div style={{ position: 'absolute', left: `${cur}%`, top: '50%', transform: 'translate(-50%,-50%)', width: 12, height: 12, borderRadius: '50%', backgroundColor: color, border: '2px solid #1c1c1e', boxShadow: `0 0 6px ${color}`, transition: 'left 0.4s ease' }} />
         </div>
       </div>
-
-      {/* Sub-label */}
-      <div style={{ fontSize: '11px', color: '#636366', marginTop: '8px' }}>
-        {(positiveRatio * 100).toFixed(0)}% positive messages · weighted by confidence
+      <div style={{ fontSize: 11, color: '#636366', marginTop: 8 }}>
+        {(posRatio * 100).toFixed(0)}% positive · weighted by confidence
       </div>
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PARTICIPANT ROSTER COMPONENT
+// PARTICIPANT ROSTER
 // ─────────────────────────────────────────────────────────────────────────────
-function ParticipantRoster({ participantStats }) {
-  if (!participantStats || participantStats.length === 0) {
-    return <div style={styles.emptyState}>No participant data available</div>
-  }
+const AV_COLORS = ['#5856D6','#007AFF','#34C759','#FF9500','#FF2D55','#BF5AF2']
 
-  const AVATAR_COLORS = ['#5856D6', '#007AFF', '#34C759', '#FF9500', '#FF2D55', '#BF5AF2']
-
+function ParticipantRoster({ stats }) {
+  if (!stats?.length) return <div style={S.empty}>No data yet — press Play</div>
   return (
-    <div style={rosterStyles.grid}>
-      {participantStats.map((p, idx) => {
-        const s = p.stats
-        const total = s.total_messages
-        const dist = s.sentiment.distribution
-        const posW = total ? (dist.positive / total) * 100 : 0
-        const neuW = total ? (dist.neutral  / total) * 100 : 0
-        const negW = total ? (dist.negative / total) * 100 : 0
-        const avgPolarity = s.sentiment.average_polarity ?? 0
-        const polaritySign = avgPolarity >= 0 ? '+' : ''
-        const toxRatio = total ? (s.toxicity.toxic_count / total * 100).toFixed(0) : 0
-        const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length]
-
-        // Dominant sentiment label + color
-        let domSentLabel = 'neutral', domSentColor = '#FFCC00'
-        if (dist.positive >= dist.neutral && dist.positive >= dist.negative) {
-          domSentLabel = 'positive'; domSentColor = '#34C759'
-        } else if (dist.negative > dist.positive && dist.negative >= dist.neutral) {
-          domSentLabel = 'negative'; domSentColor = '#FF3B30'
-        }
-
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 14 }}>
+      {stats.map((p, i) => {
+        const n   = p.stats.total_messages
+        const d   = p.stats.sentiment.distribution
+        const pol = p.stats.sentiment.average_polarity ?? 0
+        const pc  = pol >= 0 ? '#34C759' : '#FF3B30'
+        const tr  = n ? (p.stats.toxicity.toxic_count / n * 100).toFixed(0) : 0
+        const dom = d.positive >= d.neutral && d.positive >= d.negative ? 'positive'
+          : d.negative > d.positive && d.negative >= d.neutral ? 'negative' : 'neutral'
+        const dc  = { positive: '#34C759', neutral: '#FFCC00', negative: '#FF3B30' }[dom]
         return (
-          <div key={p.id} style={rosterStyles.card}>
-            {/* Avatar + name */}
-            <div style={rosterStyles.cardHeader}>
-              <div style={{ ...rosterStyles.avatar, backgroundColor: avatarColor }}>
-                {p.name.slice(0, 2).toUpperCase()}
+          <div key={p.id} style={R.card}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ ...R.av, backgroundColor: AV_COLORS[i % AV_COLORS.length] }}>
+                {p.name.slice(0,2).toUpperCase()}
               </div>
               <div>
-                <div style={rosterStyles.name}>{p.name}</div>
-                <div style={{ ...rosterStyles.dominantBadge, backgroundColor: domSentColor + '22', color: domSentColor }}>
-                  {domSentLabel}
-                </div>
+                <div style={R.name}>{p.name}</div>
+                <span style={{ ...R.badge, backgroundColor: dc+'22', color: dc }}>{dom}</span>
               </div>
             </div>
-
-            {/* Sentiment bar */}
-            <div style={rosterStyles.barLabel}>Sentiment breakdown</div>
-            <div style={rosterStyles.barTrack}>
-              {posW > 0 && <div style={{ ...rosterStyles.barSegment, width: `${posW}%`, backgroundColor: '#34C759' }} title={`Positive: ${dist.positive}`} />}
-              {neuW > 0 && <div style={{ ...rosterStyles.barSegment, width: `${neuW}%`, backgroundColor: '#FFCC00' }} title={`Neutral: ${dist.neutral}`} />}
-              {negW > 0 && <div style={{ ...rosterStyles.barSegment, width: `${negW}%`, backgroundColor: '#FF3B30' }} title={`Negative: ${dist.negative}`} />}
+            <div style={{ fontSize: 10, color: '#8e8e93', marginTop: 6 }}>Sentiment breakdown</div>
+            <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.07)' }}>
+              {n > 0 && <>
+                <div style={{ width: `${d.positive/n*100}%`, backgroundColor: '#34C759', transition: 'width 0.4s' }} />
+                <div style={{ width: `${d.neutral/n*100}%`,  backgroundColor: '#FFCC00', transition: 'width 0.4s' }} />
+                <div style={{ width: `${d.negative/n*100}%`, backgroundColor: '#FF3B30', transition: 'width 0.4s' }} />
+              </>}
             </div>
-            <div style={rosterStyles.barLegend}>
-              <span style={rosterStyles.legendItem}><span style={{ color: '#34C759' }}>●</span> {dist.positive}</span>
-              <span style={rosterStyles.legendItem}><span style={{ color: '#FFCC00' }}>●</span> {dist.neutral}</span>
-              <span style={rosterStyles.legendItem}><span style={{ color: '#FF3B30' }}>●</span> {dist.negative}</span>
+            <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#8e8e93', marginTop: 3 }}>
+              <span><span style={{ color: '#34C759' }}>●</span> {d.positive}</span>
+              <span><span style={{ color: '#FFCC00' }}>●</span> {d.neutral}</span>
+              <span><span style={{ color: '#FF3B30' }}>●</span> {d.negative}</span>
             </div>
-
-            {/* KPIs row */}
-            <div style={rosterStyles.kpiRow}>
-              <div style={rosterStyles.kpiCell}>
-                <div style={rosterStyles.kpiVal}>{total}</div>
-                <div style={rosterStyles.kpiLab}>messages</div>
-              </div>
-              <div style={rosterStyles.kpiCell}>
-                <div style={{ ...rosterStyles.kpiVal, color: avgPolarity >= 0 ? '#34C759' : '#FF3B30' }}>
-                  {polaritySign}{avgPolarity.toFixed(2)}
-                </div>
-                <div style={rosterStyles.kpiLab}>polarity</div>
-              </div>
-              <div style={rosterStyles.kpiCell}>
-                <div style={{ ...rosterStyles.kpiVal, color: s.toxicity.toxic_count > 0 ? '#FF3B30' : '#34C759' }}>
-                  {toxRatio}%
-                </div>
-                <div style={rosterStyles.kpiLab}>toxic rate</div>
-              </div>
+            <div style={R.kRow}>
+              <div style={R.kCell}><div style={R.kV}>{n}</div><div style={R.kL}>msg</div></div>
+              <div style={R.kCell}><div style={{ ...R.kV, color: pc }}>{pol >= 0 ? '+' : ''}{pol.toFixed(2)}</div><div style={R.kL}>polarity</div></div>
+              <div style={R.kCell}><div style={{ ...R.kV, color: p.stats.toxicity.toxic_count > 0 ? '#FF3B30' : '#34C759' }}>{tr}%</div><div style={R.kL}>toxic</div></div>
             </div>
           </div>
         )
@@ -673,258 +581,184 @@ function ParticipantRoster({ participantStats }) {
     </div>
   )
 }
-
-const rosterStyles = {
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-    gap: '16px',
-    padding: '4px 0'
-  },
-  card: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: '14px',
-    padding: '16px',
-    border: '1px solid rgba(255,255,255,0.08)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  cardHeader: { display: 'flex', alignItems: 'center', gap: '12px' },
-  avatar: {
-    width: '40px', height: '40px', borderRadius: '50%',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontWeight: '700', fontSize: '14px', color: '#fff', flexShrink: 0
-  },
-  name: { fontSize: '15px', fontWeight: '600', color: '#fff' },
-  dominantBadge: {
-    display: 'inline-block', marginTop: '3px',
-    fontSize: '10px', fontWeight: '600', textTransform: 'uppercase',
-    letterSpacing: '0.5px', padding: '2px 7px', borderRadius: '6px'
-  },
-  barLabel: { fontSize: '11px', color: '#8e8e93', marginBottom: '2px' },
-  barTrack: {
-    display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.07)'
-  },
-  barSegment: { height: '100%', transition: 'width 0.5s ease' },
-  barLegend: { display: 'flex', gap: '10px' },
-  legendItem: { fontSize: '11px', color: '#8e8e93', display: 'flex', alignItems: 'center', gap: '3px' },
-  kpiRow: {
-    display: 'flex', justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px 8px'
-  },
-  kpiCell: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 },
-  kpiVal: { fontSize: '16px', fontWeight: '700', color: '#fff' },
-  kpiLab: { fontSize: '9px', color: '#636366', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.4px' }
+const R = {
+  card:  { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: 14, border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 7 },
+  av:    { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#fff', flexShrink: 0 },
+  name:  { fontSize: 14, fontWeight: 600, color: '#fff' },
+  badge: { fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '2px 6px', borderRadius: 5, display: 'inline-block', marginTop: 2 },
+  kRow:  { display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 4px', marginTop: 4 },
+  kCell: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 },
+  kV:    { fontSize: 15, fontWeight: 700, color: '#fff' },
+  kL:    { fontSize: 9, color: '#636366', textTransform: 'uppercase', letterSpacing: '0.4px', marginTop: 1 }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CUSTOMIZABLE WIDGET WRAPPER
+// CHARTS
 // ─────────────────────────────────────────────────────────────────────────────
-function CustomizableWidget({ widgetId, title, children, config, participants, onConfigChange, openSettings, setOpenSettings, wide }) {
-  const isOpen = openSettings === widgetId
+function SentimentDistChart({ data, cfg }) {
+  const tot = (data.positive||0)+(data.neutral||0)+(data.negative||0)
+  if (tot === 0) return <div style={S.empty}>No data yet</div>
   return (
-    <div style={{ ...styles.widget, ...(wide ? styles.widgetWide : {}) }}>
-      <div style={styles.widgetHeader}>
-        <span style={styles.widgetTitle}>{title}</span>
-        <button onClick={() => setOpenSettings(isOpen ? null : widgetId)} style={styles.settingsButton}>{isOpen ? '✕' : '⋯'}</button>
-      </div>
-      {isOpen && <WidgetSettings config={config} participants={participants} onConfigChange={onConfigChange} />}
-      <div style={styles.widgetContent}>{children}</div>
-    </div>
-  )
-}
-
-function WidgetSettings({ config, participants, onConfigChange }) {
-  return (
-    <div style={styles.settingsPanel}>
-      <div style={styles.settingRow}>
-        <span style={styles.settingLabel}>Filter</span>
-        <select value={config.participantFilter || ''} onChange={(e) => onConfigChange({ participantFilter: e.target.value || null })} style={styles.settingSelect}>
-          <option value="">All</option>
-          {participants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CHART COMPONENTS (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
-function SentimentDistributionChartJS({ data, config }) {
-  if (!data) return <div style={styles.emptyState}>No data</div>
-  const total = (data.positive || 0) + (data.neutral || 0) + (data.negative || 0)
-  if (total === 0) return <div style={styles.emptyState}>No data</div>
-  return (
-    <div style={{ height: '150px' }}>
+    <div style={{ height: 140 }}>
       <Bar
-        data={{ labels: ['Distribution'], datasets: [
-          { label: 'Positive', data: [data.positive || 0], backgroundColor: '#34C759', borderRadius: 8 },
-          { label: 'Neutral',  data: [data.neutral  || 0], backgroundColor: '#FFCC00', borderRadius: 8 },
-          { label: 'Negative', data: [data.negative || 0], backgroundColor: '#FF3B30', borderRadius: 8 }
+        data={{ labels:['Distribution'], datasets:[
+          { label:'Positive', data:[data.positive], backgroundColor:'#34C759', borderRadius:6 },
+          { label:'Neutral',  data:[data.neutral],  backgroundColor:'#FFCC00', borderRadius:6 },
+          { label:'Negative', data:[data.negative], backgroundColor:'#FF3B30', borderRadius:6 }
         ]}}
-        options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: config.showLabels, position: 'bottom', labels: { color: '#8e8e93', padding: 10, font: { size: 11 } } }, tooltip: { backgroundColor: 'rgba(28,28,30,0.95)', callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.x} (${((ctx.parsed.x/total)*100).toFixed(0)}%)` } } }, scales: { x: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8e8e93' } }, y: { stacked: true, display: false } }, animation: { duration: config.animated ? 500 : 0 } }}
+        options={{ indexAxis:'y', responsive:true, maintainAspectRatio:false, animation:{ duration:250 },
+          plugins:{ legend:{ display:cfg.showLabels, position:'bottom', labels:{ color:'#8e8e93', font:{ size:11 } } },
+            tooltip:{ backgroundColor:'rgba(28,28,30,0.95)', callbacks:{ label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x} (${((ctx.parsed.x/tot)*100).toFixed(0)}%)` } } },
+          scales:{ x:{ stacked:true, grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93' } }, y:{ stacked:true, display:false } } }}
       />
     </div>
   )
 }
 
-function TimelineChartJS({ messages, config }) {
-  if (!messages || messages.length === 0) return <div style={styles.emptyState}>No data</div>
-  const formatTime = (ts) => { const parts = ts.split(':'); return `${parseInt(parts[1])}:${parts[2].split('.')[0].padStart(2, '0')}` }
-  const dataPoints = messages.map((msg, idx) => ({ x: idx, y: config.metric === 'sentiment' ? msg.sentiment.score : msg.toxicity.toxicity_score, timestamp: msg.from, formattedTime: formatTime(msg.from), nickname: msg.nickname, text: msg.text }))
-  const xLabels = dataPoints.map((dp, idx) => { const step = Math.max(1, Math.floor(messages.length / 10)); return (idx === 0 || idx === messages.length - 1 || idx % step === 0) ? dp.formattedTime : '' })
-  const chartColor = config.color || (config.metric === 'sentiment' ? '#00C7BE' : '#FF6B6B')
+function TimelineChart({ messages, cfg }) {
+  if (!messages?.length) return <div style={S.empty}>No data yet</div>
+  const fmt = ts => { const p=ts.split(':'); return `${parseInt(p[1])}:${p[2].split('.')[0].padStart(2,'0')}` }
+  const pts = messages.map(m => ({
+    y: cfg.metric==='sentiment' ? m.sentiment.score : m.toxicity.toxicity_score,
+    lbl: fmt(m.from), nick: m.nickname, text: m.text
+  }))
+  const step = Math.max(1, Math.floor(messages.length/10))
+  const xLbls = pts.map((p,i) => (i===0||i===pts.length-1||i%step===0) ? p.lbl : '')
+  const col = cfg.color||'#00C7BE'
   return (
-    <div style={{ height: '280px' }}>
+    <div style={{ height: 260 }}>
       <Line
-        data={{ labels: xLabels, datasets: [{ label: config.metric === 'sentiment' ? 'Sentiment Score' : 'Toxicity Score', data: dataPoints.map(dp => dp.y), borderColor: chartColor, backgroundColor: config.showArea ? chartColor + '22' : 'transparent', borderWidth: 2, pointRadius: 3, pointHoverRadius: 6, pointBackgroundColor: chartColor, fill: config.showArea, tension: 0.4 }]}}
-        options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(28,28,30,0.95)', callbacks: { title: (items) => { const dp = dataPoints[items[0].dataIndex]; return `${dp.formattedTime} · ${dp.nickname}` }, label: (ctx) => `Score: ${ctx.parsed.y.toFixed(3)}`, afterLabel: (ctx) => { const dp = dataPoints[ctx.dataIndex]; return dp.text.length > 50 ? dp.text.substring(0, 50) + '...' : dp.text } } } }, scales: { x: { grid: { display: config.showGrid, color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8e8e93', maxRotation: 0 } }, y: { min: 0, max: 1, grid: { display: config.showGrid, color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8e8e93', callback: (v) => (v * 100).toFixed(0) + '%' } } }, animation: { duration: 300 } }}
+        data={{ labels:xLbls, datasets:[{ label:cfg.metric, data:pts.map(p=>p.y), borderColor:col,
+          backgroundColor:cfg.showArea ? col+'22':'transparent', borderWidth:2,
+          pointRadius:2, pointHoverRadius:5, fill:cfg.showArea, tension:0.4 }]}}
+        options={{ responsive:true, maintainAspectRatio:false, animation:{ duration:150 },
+          plugins:{ legend:{ display:false },
+            tooltip:{ backgroundColor:'rgba(28,28,30,0.95)', callbacks:{
+              title: items=>`${pts[items[0].dataIndex].lbl} · ${pts[items[0].dataIndex].nick}`,
+              label: ctx=>`Score: ${ctx.parsed.y.toFixed(3)}`,
+              afterLabel: ctx=>{ const t=pts[ctx.dataIndex].text; return t.length>50?t.slice(0,50)+'…':t }
+            }}},
+          scales:{
+            x:{ grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93', maxRotation:0 } },
+            y:{ min:0, max:1, grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93', callback:v=>(v*100).toFixed(0)+'%' } }
+          } }}
       />
     </div>
   )
 }
 
-function ToxicityGaugeChartJS({ score, config }) {
-  const pct = Math.min(Math.max(score || 0, 0), 1)
-  const level = pct < 0.33 ? 'Low' : pct < 0.66 ? 'Medium' : 'High'
-  const color = pct < 0.33 ? '#34C759' : pct < 0.66 ? '#FF9500' : '#FF3B30'
+function ToxicityGauge({ score }) {
+  const p = Math.min(Math.max(score||0,0),1)
+  const lvl = p<0.33?'Low':p<0.66?'Medium':'High'
+  const col = p<0.33?'#34C759':p<0.66?'#FF9500':'#FF3B30'
   return (
-    <div style={{ height: '150px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ height:140, position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <Doughnut
-        data={{ datasets: [{ data: [pct, 1 - pct], backgroundColor: [color, 'rgba(255,255,255,0.07)'], borderWidth: 0, circumference: 180, rotation: 270 }]}}
-        options={{ responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: { duration: 500 } }}
+        data={{ datasets:[{ data:[p,1-p], backgroundColor:[col,'rgba(255,255,255,0.07)'], borderWidth:0, circumference:180, rotation:270 }]}}
+        options={{ responsive:true, maintainAspectRatio:false, cutout:'75%', animation:{ duration:300 }, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } } }}
       />
-      <div style={{ position: 'absolute', bottom: '10px', textAlign: 'center' }}>
-        <div style={{ fontSize: '22px', fontWeight: '700', color }}>{(pct * 100).toFixed(0)}%</div>
-        <div style={{ fontSize: '11px', color: '#8e8e93', marginTop: '2px' }}>{level} toxicity</div>
+      <div style={{ position:'absolute', bottom:8, textAlign:'center' }}>
+        <div style={{ fontSize:20, fontWeight:700, color:col }}>{(p*100).toFixed(0)}%</div>
+        <div style={{ fontSize:11, color:'#8e8e93' }}>{lvl} toxicity</div>
       </div>
     </div>
   )
 }
 
-function MessageStream({ messages, config }) {
-  if (!messages || messages.length === 0) return <div style={styles.emptyState}>No messages</div>
-  const sentimentColor = (label) => ({ positive: '#34C759', neutral: '#FFCC00', negative: '#FF3B30' }[label] || '#8e8e93')
-  const formatTime = (ts) => { const parts = ts.split(':'); return `${parseInt(parts[1])}:${parts[2].split('.')[0].padStart(2, '0')}` }
+function MessageStream({ messages, cfg }) {
+  if (!messages?.length) return <div style={S.empty}>No messages yet</div>
+  const sc = l => ({ positive:'#34C759', neutral:'#FFCC00', negative:'#FF3B30' }[l]||'#8e8e93')
+  const fmt = ts => { const p=ts.split(':'); return `${parseInt(p[1])}:${p[2].split('.')[0].padStart(2,'0')}` }
   return (
-    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-      {[...messages].reverse().map((msg, idx) => (
-        <div key={idx} style={msgStyles.row}>
-          <div style={msgStyles.meta}>
-            <span style={msgStyles.nick}>{msg.nickname}</span>
-            {config.showTimestamps && <span style={msgStyles.time}>{formatTime(msg.from)}</span>}
-            <span style={{ ...msgStyles.badge, backgroundColor: sentimentColor(msg.sentiment.label) + '22', color: sentimentColor(msg.sentiment.label) }}>
-              {msg.sentiment.label}
+    <div style={{ maxHeight:380, overflowY:'auto' }}>
+      {[...messages].reverse().slice(0, cfg.limit||30).map((m,i) => (
+        <div key={i} style={{ padding:'9px 0', borderBottom:'0.5px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', marginBottom:3 }}>
+            <span style={{ fontSize:12, fontWeight:600, color:'#fff' }}>{m.nickname}</span>
+            {cfg.showTimestamps && <span style={{ fontSize:11, color:'#636366' }}>{fmt(m.from)}</span>}
+            <span style={{ fontSize:10, fontWeight:600, padding:'2px 6px', borderRadius:5, backgroundColor:sc(m.sentiment.label)+'22', color:sc(m.sentiment.label), textTransform:'uppercase' }}>
+              {m.sentiment.label}
             </span>
-            {msg.toxicity.is_toxic && (
-              <span style={{ ...msgStyles.badge, backgroundColor: '#FF3B3022', color: '#FF3B30' }}>
-                ⚠ {msg.toxicity.severity}
+            {m.toxicity.is_toxic && (
+              <span style={{ fontSize:10, fontWeight:600, padding:'2px 6px', borderRadius:5, backgroundColor:'#FF3B3022', color:'#FF3B30' }}>
+                ⚠ {m.toxicity.severity}
               </span>
             )}
           </div>
-          <div style={msgStyles.text}>{msg.text}</div>
+          <div style={{ fontSize:13, color:'#ebebf5cc', lineHeight:1.5 }}>{m.text}</div>
         </div>
       ))}
     </div>
   )
 }
 
-const msgStyles = {
-  row: { padding: '10px 0', borderBottom: '0.5px solid rgba(255,255,255,0.06)' },
-  meta: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' },
-  nick: { fontSize: '12px', fontWeight: '600', color: '#fff' },
-  time: { fontSize: '11px', color: '#636366' },
-  badge: { fontSize: '10px', fontWeight: '600', padding: '2px 7px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' },
-  text: { fontSize: '13px', color: '#ebebf5cc', lineHeight: '1.5' }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
 // ─────────────────────────────────────────────────────────────────────────────
-const styles = {
-  appContainer: { minHeight: '100vh', width: '100%', backgroundColor: '#1c1c1e', fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif', color: '#fff', overflowX: 'hidden', position: 'relative' },
+const S = {
+  app:    { minHeight:'100vh', backgroundColor:'#1c1c1e', fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif', color:'#fff', overflowX:'hidden' },
 
   // Header
-  header: { position: 'sticky', top: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(28,28,30,0.95)', backdropFilter: 'saturate(180%) blur(20px)', WebkitBackdropFilter: 'saturate(180%) blur(20px)', borderBottom: '0.5px solid rgba(255,255,255,0.1)', padding: 'clamp(0.5rem,2vw,0.75rem) clamp(0.75rem,3vw,1rem)', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' },
-  headerContent: { maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: 'clamp(0.5rem,2vw,0.75rem)', flex: '1 1 auto' },
-  headerRight: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
+  header: { position:'sticky', top:0, zIndex:100, backgroundColor:'rgba(28,28,30,0.96)', backdropFilter:'saturate(180%) blur(20px)', borderBottom:'0.5px solid rgba(255,255,255,0.1)' },
+  hRow:   { maxWidth:1400, margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, padding:'12px 20px 8px' },
+  hLeft:  { display:'flex', alignItems:'center', gap:12 },
+  hRight: { display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' },
+  logo:   { width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#007AFF,#5856D6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 },
+  title:  { fontSize:17, fontWeight:700, margin:0 },
+  subtitle:{ fontSize:12, color:'#8e8e93', margin:0 },
 
-  logoCircle: { width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg,#007AFF,#5856D6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', color: '#fff', flexShrink: 0 },
-  headerText: {},
-  title: { fontSize: 'clamp(15px,3vw,18px)', fontWeight: '700', color: '#fff', margin: 0 },
-  subtitle: { fontSize: 'clamp(10px,2vw,12px)', color: '#8e8e93', margin: 0 },
+  // Controls
+  ctrlBtn:    { border:'none', borderRadius:8, padding:'6px 12px', fontSize:13, color:'#fff', cursor:'pointer', backgroundColor:'#3a3a3c', fontWeight:600 },
+  speedGroup: { display:'flex', gap:3, backgroundColor:'rgba(255,255,255,0.07)', borderRadius:8, padding:3 },
+  speedBtn:   { border:'none', borderRadius:6, padding:'4px 9px', fontSize:12, color:'#8e8e93', cursor:'pointer', backgroundColor:'transparent', fontWeight:500 },
+  speedActive:{ backgroundColor:'#007AFF', color:'#fff', fontWeight:700 },
+  tsBlock:    { display:'flex', alignItems:'center', gap:2, fontVariantNumeric:'tabular-nums' },
+  tsCurr:     { fontSize:14, fontWeight:700, color:'#fff' },
+  tsTotal:    { fontSize:12, color:'#8e8e93' },
+  custBtn:    { display:'flex', alignItems:'center', backgroundColor:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:10, padding:'7px 14px', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:500 },
 
-  // Live indicator
-  liveBlock: { display: 'flex', alignItems: 'center', gap: '6px' },
-  liveDot: { width: '8px', height: '8px', borderRadius: '50%', animation: 'pulse 2s infinite' },
-  liveLabel: { fontSize: '12px', color: '#8e8e93', fontVariantNumeric: 'tabular-nums' },
-  lastUpdatedLabel: { fontSize: '11px', color: '#636366' },
+  // Progress
+  barOuter: { height:4, backgroundColor:'rgba(255,255,255,0.07)' },
+  barInner: { height:'100%', transition:'width 0.3s ease, background-color 0.5s' },
+  barStats: { display:'flex', justifyContent:'space-between', padding:'4px 20px 6px', fontSize:11, color:'#636366' },
 
-  // Control buttons
-  controlBtn: { border: 'none', borderRadius: '8px', padding: '6px 10px', fontSize: '14px', color: '#fff', cursor: 'pointer', transition: 'opacity 0.15s' },
-
-  // Widget toggle
-  widgetToggleBtn: { display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'rgba(255,255,255,0.1)', border: '0.5px solid rgba(255,255,255,0.2)', borderRadius: '10px', padding: '8px 14px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500', transition: 'background-color 0.2s' },
-  widgetToggleIcon: { fontSize: '14px' },
-  widgetToggleText: { fontSize: '13px' },
+  // Side panel
+  overlayBg: { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.5)', zIndex:200, display:'flex', justifyContent:'flex-end' },
+  sidePanel: { width:'clamp(300px,90vw,420px)', height:'100%', backgroundColor:'#1c1c1e', borderLeft:'0.5px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', overflowY:'hidden' },
+  spHead:    { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'18px 20px', borderBottom:'0.5px solid rgba(255,255,255,0.08)' },
+  spTitle:   { fontSize:16, fontWeight:700, color:'#fff' },
+  spClose:   { background:'none', border:'none', color:'#007AFF', cursor:'pointer', fontSize:14 },
+  spFoot:    { padding:'10px 20px', borderTop:'0.5px solid rgba(255,255,255,0.08)', fontSize:12, color:'#636366', textAlign:'center' },
+  secLabel:  { fontSize:11, fontWeight:600, color:'#636366', textTransform:'uppercase', letterSpacing:'0.8px', padding:'14px 20px 6px' },
+  wRow:      { display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding:'13px 20px', cursor:'pointer', gap:10 },
+  wName:     { fontSize:14, fontWeight:500, color:'#fff', marginBottom:3 },
+  wDesc:     { fontSize:12, color:'#8e8e93', lineHeight:1.45 },
+  togBtn:    { border:'none', borderRadius:7, padding:'5px 12px', cursor:'pointer', fontSize:12, fontWeight:600, flexShrink:0, marginTop:2 },
+  div:       { height:'0.5px', backgroundColor:'rgba(255,255,255,0.06)', margin:'0 20px' },
 
   // Grid
-  widgetGrid: { maxWidth: '1400px', margin: '0 auto', padding: 'clamp(1rem,3vw,1.5rem)', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 'clamp(0.75rem,2vw,1rem)', alignItems: 'start' },
-
-  // Widget
-  widget: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '16px', border: '0.5px solid rgba(255,255,255,0.1)', overflow: 'hidden', transition: 'border-color 0.2s' },
-  widgetWide: { gridColumn: '1 / -1' },
-  widgetHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px 0' },
-  widgetTitle: { fontSize: '13px', fontWeight: '600', color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.5px' },
-  settingsButton: { background: 'none', border: 'none', color: '#636366', cursor: 'pointer', fontSize: '18px', padding: '0 4px', lineHeight: 1 },
-  widgetContent: { padding: '12px 16px 16px' },
+  grid:      { maxWidth:1400, margin:'0 auto', padding:'clamp(1rem,3vw,1.5rem)', display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
+  widget:    { backgroundColor:'rgba(255,255,255,0.05)', borderRadius:16, border:'0.5px solid rgba(255,255,255,0.1)', overflow:'hidden' },
+  widgetWide:{ gridColumn:'1 / -1' },
+  wHead:     { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'13px 15px 0' },
+  wTitle:    { fontSize:12, fontWeight:600, color:'#8e8e93', textTransform:'uppercase', letterSpacing:'0.5px' },
+  wBtn:      { background:'none', border:'none', color:'#636366', cursor:'pointer', fontSize:18, padding:'0 3px', lineHeight:1 },
+  setPanel:  { margin:'8px 15px', padding:'10px 12px', backgroundColor:'rgba(0,0,0,0.3)', borderRadius:9, display:'flex', alignItems:'center', gap:10 },
+  setLabel:  { fontSize:12, color:'#8e8e93', whiteSpace:'nowrap' },
+  setSelect: { flex:1, backgroundColor:'rgba(255,255,255,0.1)', border:'0.5px solid rgba(255,255,255,0.15)', borderRadius:7, color:'#fff', padding:'4px 8px', fontSize:12 },
+  wBody:     { padding:'10px 15px 15px' },
 
   // KPI
-  kpiValue: { fontSize: 'clamp(28px,5vw,40px)', fontWeight: '700', color: '#fff', lineHeight: 1 },
-  kpiLabel: { fontSize: '12px', color: '#8e8e93', marginTop: '4px' },
-
-  // Settings panel
-  settingsPanel: { margin: '0 16px', padding: '12px', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '10px', marginBottom: '8px' },
-  settingRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' },
-  settingLabel: { fontSize: '12px', color: '#8e8e93' },
-  settingSelect: { backgroundColor: 'rgba(255,255,255,0.1)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', padding: '4px 8px', fontSize: '12px', flex: 1 },
-
-  // Overlay panel
-  widgetPanelOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', justifyContent: 'flex-end' },
-  widgetPanelContainer: { width: 'clamp(300px,90vw,420px)', height: '100%', backgroundColor: '#1c1c1e', borderLeft: '0.5px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
-  widgetPanelHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.08)', position: 'sticky', top: 0, backgroundColor: '#1c1c1e', zIndex: 1 },
-  widgetPanelTitle: { fontSize: '17px', fontWeight: '700', color: '#fff', margin: 0 },
-  widgetPanelCloseBtn: { background: 'none', border: 'none', color: '#007AFF', cursor: 'pointer', fontSize: '15px', fontWeight: '500' },
-  widgetPanelContent: { padding: '8px 0', flex: 1 },
-  widgetPanelFooter: { padding: '12px 20px', borderTop: '0.5px solid rgba(255,255,255,0.08)', position: 'sticky', bottom: 0, backgroundColor: '#1c1c1e' },
-  footerText: { fontSize: '12px', color: '#636366', margin: 0, textAlign: 'center' },
-
-  // Widget section in panel
-  widgetSection: { marginBottom: '8px' },
-  sectionHeader: { fontSize: '11px', fontWeight: '600', color: '#636366', textTransform: 'uppercase', letterSpacing: '0.8px', padding: '12px 20px 6px' },
-  sectionContent: { backgroundColor: 'rgba(255,255,255,0.03)', marginHorizontal: '16px' },
-
-  widgetRow: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '14px 20px', cursor: 'pointer', gap: '12px' },
-  widgetRowLeft: { flex: 1, minWidth: 0 },
-  widgetRowTitle: { fontSize: '14px', fontWeight: '500', color: '#fff', marginBottom: '4px' },
-  widgetRowDescription: { fontSize: '12px', color: '#8e8e93', lineHeight: '1.45' },
-  widgetRowRight: { flexShrink: 0 },
-
-  uniqueToggle: { border: 'none', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', transition: 'background-color 0.2s, color 0.2s', fontWeight: '600' },
-  toggleText: { fontSize: '12px' },
-  separator: { height: '0.5px', backgroundColor: 'rgba(255,255,255,0.06)', margin: '0 20px' },
+  kpiVal:    { fontSize:40, fontWeight:700, color:'#fff', lineHeight:1 },
+  kpiLab:    { fontSize:12, color:'#8e8e93', marginTop:4 },
 
   // States
-  loadingContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px' },
-  spinner: { width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.1)', borderTop: '3px solid #007AFF', borderRadius: '50%', animation: 'spin 1s linear infinite' },
-  loadingText: { color: '#8e8e93', fontSize: '14px' },
-  errorBanner: { display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,59,48,0.15)', border: '0.5px solid rgba(255,59,48,0.3)', borderRadius: '10px', padding: '12px 16px', margin: '16px', color: '#FF3B30', fontSize: '14px' },
-  errorIcon: { fontWeight: '700', fontSize: '16px' },
-  emptyState: { color: '#636366', fontSize: '13px', textAlign: 'center', padding: '20px 0' }
+  loadBox:   { display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh' },
+  spinner:   { width:32, height:32, border:'3px solid rgba(255,255,255,0.1)', borderTop:'3px solid #007AFF', borderRadius:'50%', animation:'spin 1s linear infinite' },
+  errBanner: { backgroundColor:'rgba(255,59,48,0.15)', border:'0.5px solid rgba(255,59,48,0.3)', borderRadius:10, padding:'12px 20px', margin:16, color:'#FF3B30', fontSize:14 },
+  empty:     { color:'#636366', fontSize:13, textAlign:'center', padding:'18px 0' },
+  emptyBox:  { display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'65vh', gap:16, padding:24 },
+  bigPlay:   { backgroundColor:'#34C759', border:'none', borderRadius:14, padding:'14px 36px', fontSize:16, fontWeight:700, color:'#fff', cursor:'pointer', marginTop:8 }
 }
 
 export default App
