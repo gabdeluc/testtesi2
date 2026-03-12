@@ -54,7 +54,13 @@ function App() {
   const [isPlaying, setIsPlaying]         = useState(false)
   const [speed, setSpeed]                 = useState(5)
   const timerRef  = useRef(null)
-  const indexRef  = useRef(0)   // copia sincrona per il timer
+  const indexRef  = useRef(0)      // copia sincrona per il timer
+
+  // Wall-clock continuo: secondi simulati del meeting, tick ogni 100 ms.
+  // Completamente indipendente dai messaggi → display sempre fluido.
+  const [wallSec, setWallSec]   = useState(0)
+  const wallRef   = useRef(0)   // valore corrente senza stale closure
+  const clockRef  = useRef(null)
 
   // ── UI ────────────────────────────────────────────────────────────
   const [widgetConfigs, setWidgetConfigs] = useState({
@@ -74,10 +80,10 @@ function App() {
       const saved = localStorage.getItem('visibleWidgets')
       if (saved) return JSON.parse(saved)
     } catch { 
-      // Fall through to default if JSON.parse fails
+      // Fall through if parsing fails
     }
     
-    // ✅ Return the fallback object from INSIDE the function
+    // ✅ Safely return the default object from INSIDE the function
     return {
       messages: true, sentiment: true, toxicity: true, sentimentDist: true,
       toxicityGauge: true, timelineSentiment: true, timelineToxicity: true,
@@ -123,6 +129,10 @@ function App() {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
   }, [])
 
+  const stopClock = useCallback(() => {
+    if (clockRef.current) { clearInterval(clockRef.current); clockRef.current = null }
+  }, [])
+
   const scheduleNext = useCallback((idx, transcript, spd) => {
     if (idx >= transcript.length) { setIsPlaying(false); return }
     const gap = transcript[idx + 1]
@@ -133,36 +143,57 @@ function App() {
       const next = idx + 1
       indexRef.current = next
       setPlaybackIndex(next)
+      // Allinea il wall-clock al timestamp reale del messaggio appena arrivato
+      if (transcript[next - 1]) {
+        wallRef.current = tsToSec(transcript[next - 1].from)
+      }
       scheduleNext(next, transcript, spd)
     }, delay)
   }, [])
+
+  // Clock continuo: tick ogni 100 ms, avanza wallRef di 0.1 * speed secondi simulati
+  const startClock = useCallback((spd) => {
+    stopClock()
+    clockRef.current = setInterval(() => {
+      wallRef.current += 0.1 * spd
+      setWallSec(wallRef.current)
+    }, 100)
+  }, [stopClock])
 
   useEffect(() => {
     if (isPlaying && allTranscript.length > 0) {
       if (indexRef.current >= allTranscript.length) {
         indexRef.current = 0
+        wallRef.current  = 0
         setPlaybackIndex(0)
+        setWallSec(0)
       }
       scheduleNext(indexRef.current, allTranscript, speed)
+      startClock(speed)
     } else {
       stopTimer()
+      stopClock()
     }
-    return stopTimer
-  }, [isPlaying, allTranscript, speed, scheduleNext, stopTimer])
+    return () => { stopTimer(); stopClock() }
+  }, [isPlaying, allTranscript, speed, scheduleNext, startClock, stopTimer, stopClock])
 
   const handlePlayPause = () => setIsPlaying(p => !p)
 
   const handleReset = () => {
     stopTimer()
+    stopClock()
     setIsPlaying(false)
     indexRef.current = 0
+    wallRef.current  = 0
     setPlaybackIndex(0)
+    setWallSec(0)
   }
 
   const handleSpeedChange = (s) => {
     setSpeed(s)
     if (isPlaying) {
       stopTimer()
+      stopClock()
       setIsPlaying(false)
       setTimeout(() => setIsPlaying(true), 30)
     }
@@ -171,12 +202,13 @@ function App() {
   // ── Vista parziale ────────────────────────────────────────────────
   const liveTranscript = allTranscript.slice(0, playbackIndex)
   const total          = allTranscript.length
-  const progressPct    = total > 0 ? (playbackIndex / total) * 100 : 0
+  const totalSec       = total > 0 ? tsToSec(allTranscript[total - 1].from) : 0
+  // Progresso basato sul wall-clock → barra scorre fluidamente
+  const progressPct    = totalSec > 0 ? Math.min((wallSec / totalSec) * 100, 100) : 0
   const isFinished     = playbackIndex >= total && total > 0
-  const currentTs      = liveTranscript.length > 0
-    ? secToLabel(tsToSec(liveTranscript[liveTranscript.length - 1].from)) : '00:00'
-  const totalTs        = total > 0
-    ? secToLabel(tsToSec(allTranscript[total - 1].from)) : '00:00'
+  // currentTs = wall-clock continuo (non l'ultimo messaggio)
+  const currentTs      = secToLabel(Math.min(wallSec, totalSec))
+  const totalTs        = secToLabel(totalSec)
 
   // ── Helpers ───────────────────────────────────────────────────────
   const updateWidgetConfig   = (id, u) => setWidgetConfigs(p => ({ ...p, [id]: { ...p[id], ...u } }))
