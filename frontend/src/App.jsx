@@ -43,12 +43,18 @@ const resolveColor = (cfg, participants) => {
 // Velocità disponibili (moltiplicatore sul tempo reale del transcript)
 const SPEEDS = [1, 2, 5, 10, 20]
 
-// "HH:MM:SS.mmm" → secondi
+// ISO 8601 (es. "2024-06-01T10:00:05.123Z") → secondi epoch
+// Usato per calcolare i delta di playback tra messaggi consecutivi.
+// Compatibile con il formato Arianna (created_at assoluto).
 const tsToSec = (ts) => {
   if (!ts) return 0
-  const [h, m, rest] = ts.split(':')
-  return parseInt(h) * 3600 + parseInt(m) * 60 + parseFloat(rest)
+  return new Date(ts).getTime() / 1000
 }
+
+// ISO 8601 → stringa leggibile "MM:SS" relativa al primo messaggio del transcript.
+// baseTs = timestamp ISO del primo messaggio (calcolato al momento del playback).
+// Usato solo per il display; il calcolo dei delta rimane in secondi epoch.
+let _playbackBase = null   // verrà impostato al primo messaggio del transcript
 
 // secondi → "MM:SS"
 const secToLabel = (sec) => {
@@ -110,19 +116,35 @@ function App() {
     }
   })
 
+  const [meetingList, setMeetingList]         = useState([])
+  const [selectedMeeting, setSelectedMeeting] = useState('mtg001')
+
   const [openSettings, setOpenSettings]       = useState(null)
   const [showWidgetPanel, setShowWidgetPanel] = useState(false)
   const [sidebarOpen, setSidebarOpen]         = useState(false)  // sidebar collassabile
   const [activeView, setActiveView]           = useState('overview') // vista attiva
 
+  // ── Load lista meeting (una volta sola) ─────────────────────
+  useEffect(() => {
+    fetch(`${API_URL}/meetings`)
+      .then(r => r.json())
+      .then(d => setMeetingList(d.meetings || []))
+      .catch(() => {})
+  }, [])
+
   // ── Load data ─────────────────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       setLoading(true)
+      setError(null)
+      // Reset playback al cambio meeting
+      if (typeof stopTimer === 'function') { stopTimer(); stopClock() }
+      indexRef.current = 0; wallRef.current = 0
+      setPlaybackIndex(0); setWallSec(0); setIsPlaying(false)
       try {
         const [rP, rM] = await Promise.all([
           fetch(`${API_URL}/participants`),
-          fetch(`${API_URL}/meeting/mtg001/analysis`)
+          fetch(`${API_URL}/meeting/${selectedMeeting}/analysis`)
         ])
         if (!rM.ok) throw new Error(`HTTP ${rM.status}`)
         const [dP, dM] = await Promise.all([rP.json(), rM.json()])
@@ -135,7 +157,7 @@ function App() {
       }
     }
     load()
-  }, [])
+  }, [selectedMeeting]) // eslint-disable-line
 
   useEffect(() => {
     try { localStorage.setItem('visibleWidgets', JSON.stringify(visibleWidgets)) } catch {}
@@ -157,7 +179,7 @@ function App() {
   const scheduleNext = useCallback((idx, transcript, spd) => {
     if (idx >= transcript.length) { setIsPlaying(false); return }
     const gap = transcript[idx + 1]
-      ? tsToSec(transcript[idx + 1].from) - tsToSec(transcript[idx].from)
+      ? tsToSec(transcript[idx + 1].created_at) - tsToSec(transcript[idx].created_at)
       : 1
     const delay = Math.max(80, (gap * 1000) / spd)
     timerRef.current = setTimeout(() => {
@@ -166,7 +188,7 @@ function App() {
       setPlaybackIndex(next)
       // Allinea il wall-clock al timestamp reale del messaggio appena arrivato
       if (transcript[next - 1]) {
-        wallRef.current = tsToSec(transcript[next - 1].from)
+        wallRef.current = tsToSec(transcript[next - 1].created_at)
       }
       scheduleNext(next, transcript, spd)
     }, delay)
@@ -223,7 +245,7 @@ function App() {
   // ── Vista parziale ────────────────────────────────────────────────
   const liveTranscript = allTranscript.slice(0, playbackIndex)
   const total          = allTranscript.length
-  const totalSec       = total > 0 ? tsToSec(allTranscript[total - 1].from) : 0
+  const totalSec       = total > 0 ? tsToSec(allTranscript[total - 1].created_at) : 0
   // Progresso basato sul wall-clock → barra scorre fluidamente
   const progressPct    = totalSec > 0 ? Math.min((wallSec / totalSec) * 100, 100) : 0
   const isFinished     = playbackIndex >= total && total > 0
@@ -239,7 +261,7 @@ function App() {
     const pf = widgetConfigs[widgetId].participantFilter
     if (!pf) return liveTranscript
     const p = participants.find(x => x.id === pf)
-    return p ? liveTranscript.filter(e => e.nickname === p.name) : liveTranscript
+    return p ? liveTranscript.filter(e => e.participant_name === p.name) : liveTranscript
   }
 
   const calcStats = (tr) => {
@@ -272,7 +294,7 @@ function App() {
 
   const getParticipantStats = () =>
     participants.map(p => {
-      const msgs = liveTranscript.filter(e => e.nickname === p.name)
+      const msgs = liveTranscript.filter(e => e.participant_name === p.name)
       return { ...p, stats: calcStats(msgs) }
     })
 
@@ -362,9 +384,24 @@ function App() {
             <div style={S.logo}>MI</div>
             <div>
               <h1 style={S.title}>Meeting Intelligence</h1>
-              <p style={S.subtitle}>MTG-001 · Live Playback</p>
+              <p style={S.subtitle}>{selectedMeeting.toUpperCase()} · Live Playback</p>
             </div>
           </div>
+
+          {/* Selettore meeting */}
+          {meetingList.length > 0 && (
+            <select
+              value={selectedMeeting}
+              onChange={e => setSelectedMeeting(e.target.value)}
+              style={S.meetingSelect}
+            >
+              {meetingList.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.id.toUpperCase()} · {new Date(m.date).toLocaleDateString('it-IT', { day:'2-digit', month:'short' })}
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Controlli */}
           <div style={S.hRight}>
@@ -730,10 +767,16 @@ function SentimentDistChart({ data, cfg }) {
 
 function TimelineChart({ messages, cfg }) {
   if (!messages?.length) return <div style={S.empty}>No data yet</div>
-  const fmt = ts => { const p=ts.split(':'); return `${parseInt(p[1])}:${p[2].split('.')[0].padStart(2,'0')}` }
+  // fmt: ISO 8601 → tempo relativo "MM:SS" dal primo messaggio del transcript
+  const base = new Date(messages[0].created_at).getTime()
+  const fmt = ts => {
+    const diffSec = Math.max(0, (new Date(ts).getTime() - base) / 1000)
+    const mm = Math.floor(diffSec / 60), ss = Math.floor(diffSec % 60)
+    return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
+  }
   const pts = messages.map(m => ({
     y: cfg.metric==='sentiment' ? m.sentiment.score : m.toxicity.toxicity_score,
-    lbl: fmt(m.from), nick: m.nickname, text: m.text
+    lbl: fmt(m.created_at), nick: m.participant_name, text: m.transcribed_text
   }))
   const step = Math.max(1, Math.floor(messages.length/10))
   const xLbls = pts.map((p,i) => (i===0||i===pts.length-1||i%step===0) ? p.lbl : '')
@@ -749,7 +792,7 @@ function TimelineChart({ messages, cfg }) {
             tooltip:{ backgroundColor:'rgba(28,28,30,0.95)', callbacks:{
               title: items=>`${pts[items[0].dataIndex].lbl} · ${pts[items[0].dataIndex].nick}`,
               label: ctx=>`Score: ${ctx.parsed.y.toFixed(3)}`,
-              afterLabel: ctx=>{ const t=pts[ctx.dataIndex].text; return t.length>50?t.slice(0,50)+'…':t }
+              afterLabel: ctx=>{ const t=pts[ctx.dataIndex].transcribed_text; return t.length>50?t.slice(0,50)+'…':t }
             }}},
           scales:{
             x:{ grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93', maxRotation:0 } },
@@ -783,7 +826,13 @@ function ToxicityGauge({ score, accentColor }) {
 function MessageStream({ messages, cfg, participantColors, participants }) {
   if (!messages?.length) return <div style={S.empty}>No messages yet</div>
   const sc = l => ({ positive:'#34C759', neutral:'#FFCC00', negative:'#FF3B30' }[l]||'#8e8e93')
-  const fmt = ts => { const p=ts.split(':'); return `${parseInt(p[1])}:${p[2].split('.')[0].padStart(2,'0')}` }
+  // fmt: ISO 8601 → "MM:SS" relativo al primo messaggio della lista
+  const base = messages.length ? new Date(messages[0].created_at).getTime() : 0
+  const fmt = ts => {
+    const diffSec = Math.max(0, (new Date(ts).getTime() - base) / 1000)
+    const mm = Math.floor(diffSec / 60), ss = Math.floor(diffSec % 60)
+    return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
+  }
   // Colore per nickname: usa il colore del partecipante se disponibile
   const nickColor = (name) => {
     if (!participantColors || !participants) return '#fff'
@@ -795,8 +844,8 @@ function MessageStream({ messages, cfg, participantColors, participants }) {
       {[...messages].reverse().slice(0, cfg.limit||30).map((m,i) => (
         <div key={i} style={{ padding:'9px 0', borderBottom:'0.5px solid rgba(255,255,255,0.06)' }}>
           <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', marginBottom:3 }}>
-            <span style={{ fontSize:12, fontWeight:600, color: nickColor(m.nickname) }}>{m.nickname}</span>
-            {cfg.showTimestamps && <span style={{ fontSize:11, color:'#636366' }}>{fmt(m.from)}</span>}
+            <span style={{ fontSize:12, fontWeight:600, color: nickColor(m.participant_name) }}>{m.participant_name}</span>
+            {cfg.showTimestamps && <span style={{ fontSize:11, color:'#636366' }}>{fmt(m.created_at)}</span>}
             <span style={{ fontSize:10, fontWeight:600, padding:'2px 6px', borderRadius:5, backgroundColor:sc(m.sentiment.label)+'22', color:sc(m.sentiment.label), textTransform:'uppercase' }}>
               {m.sentiment.label}
             </span>
@@ -806,7 +855,7 @@ function MessageStream({ messages, cfg, participantColors, participants }) {
               </span>
             )}
           </div>
-          <div style={{ fontSize:13, color:'#ebebf5cc', lineHeight:1.5 }}>{m.text}</div>
+          <div style={{ fontSize:13, color:'#ebebf5cc', lineHeight:1.5 }}>{m.transcribed_text}</div>
         </div>
       ))}
     </div>
@@ -836,6 +885,8 @@ const S = {
   logo:   { width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#007AFF,#5856D6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 },
   title:  { fontSize:17, fontWeight:700, margin:0 },
   subtitle:{ fontSize:12, color:'#8e8e93', margin:0 },
+
+  meetingSelect: { backgroundColor:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:10, color:'#fff', padding:'7px 12px', fontSize:13, fontWeight:600, cursor:'pointer', outline:'none' },
 
   // Controls
   ctrlBtn:    { border:'none', borderRadius:8, padding:'6px 12px', fontSize:13, color:'#fff', cursor:'pointer', backgroundColor:'#3a3a3c', fontWeight:600 },
