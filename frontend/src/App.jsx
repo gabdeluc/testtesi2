@@ -21,6 +21,25 @@ ChartJS.register(
 
 const API_URL = 'http://localhost:8000'
 
+// Colore dedicato per ogni partecipante — usato su tutti i grafici.
+// L'indice corrisponde all'ordine in cui i partecipanti arrivano dall'API.
+const PARTICIPANT_COLORS = [
+  '#00C7BE',   // Alice  — teal
+  '#BF5AF2',   // Bob    — viola
+  '#FF9F0A',   // Charlie — arancione
+  '#30D158',   // 4° speaker (se aggiunto)
+  '#FF375F',   // 5° speaker
+]
+
+// Dato un widgetId e la lista participants, restituisce il colore attivo:
+// • se c'è un filtro partecipante → colore di quel partecipante
+// • altrimenti → colore default del widget (cfg.color)
+const resolveColor = (cfg, participants) => {
+  if (!cfg.participantFilter) return cfg.color
+  const idx = participants.findIndex(p => p.id === cfg.participantFilter)
+  return idx >= 0 ? PARTICIPANT_COLORS[idx] ?? cfg.color : cfg.color
+}
+
 // Velocità disponibili (moltiplicatore sul tempo reale del transcript)
 const SPEEDS = [1, 2, 5, 10, 20]
 
@@ -67,7 +86,7 @@ function App() {
     messages:          { participantFilter: null, color: '#FF3B30' },
     sentiment:         { participantFilter: null, color: '#34C759' },
     toxicity:          { participantFilter: null, color: '#FF9500' },
-    sentimentDist:     { participantFilter: null, color: '#007AFF', showLabels: true },
+    sentimentDist:     { participantFilter: null, color: '#007AFF', _defaultColor: '#007AFF', showLabels: true },
     toxicityGauge:     { participantFilter: null, color: '#5856D6' },
     timelineSentiment: { participantFilter: null, color: '#00C7BE', showGrid: true, showArea: true, metric: 'sentiment' },
     timelineToxicity:  { participantFilter: null, color: '#FF6B6B', showGrid: true, showArea: true, metric: 'toxicity' },
@@ -473,51 +492,55 @@ function App() {
             {children}
           </Wgt>
         )
+        // Colore attivo per ogni widget (default o colore partecipante)
+        const col = (id) => resolveColor(widgetConfigs[id], participants)
+
         const kpiMessages = wgt('messages', 'Messages', false,
           (() => { const d = getFiltered('messages')
             return <><div style={S.kpiVal}>{d.length}</div><div style={S.kpiLab}>messages so far</div></> })())
         const kpiSentiment = wgt('sentiment', 'Sentiment', false,
           (() => { const s = calcStats(getFiltered('sentiment'))
-            return <PolarityKPI polarity={s.sentiment.average_polarity} posRatio={s.sentiment.positive_ratio} /> })())
+            return <PolarityKPI polarity={s.sentiment.average_polarity} posRatio={s.sentiment.positive_ratio} accentColor={col('sentiment')} /> })())
         const kpiToxicity = wgt('toxicity', 'Toxic Messages', false,
           (() => { const s = calcStats(getFiltered('toxicity'))
-            return <><div style={S.kpiVal}>{s.toxicity.toxic_count}</div><div style={S.kpiLab}>{(s.toxicity.toxic_ratio*100).toFixed(0)}% toxic</div></> })())
+            return <><div style={{ ...S.kpiVal, color: col('toxicity') }}>{s.toxicity.toxic_count}</div><div style={S.kpiLab}>{(s.toxicity.toxic_ratio*100).toFixed(0)}% toxic</div></> })())
         const wSentDist = wgt('sentimentDist', 'Sentiment Distribution', true,
           (() => { const s = calcStats(getFiltered('sentimentDist'))
-            return <SentimentDistChart data={s.sentiment.distribution} cfg={widgetConfigs.sentimentDist} /> })())
+            return <SentimentDistChart data={s.sentiment.distribution} cfg={{ ...widgetConfigs.sentimentDist, color: col('sentimentDist') }} /> })())
         const wTimeSent = wgt('timelineSentiment', 'Sentiment Timeline', true,
-          <TimelineChart messages={getFiltered('timelineSentiment')} cfg={widgetConfigs.timelineSentiment} />)
+          <TimelineChart messages={getFiltered('timelineSentiment')} cfg={{ ...widgetConfigs.timelineSentiment, color: col('timelineSentiment') }} />)
         const wTimeTox = wgt('timelineToxicity', 'Toxicity Timeline', true,
-          <TimelineChart messages={getFiltered('timelineToxicity')} cfg={widgetConfigs.timelineToxicity} />)
+          <TimelineChart messages={getFiltered('timelineToxicity')} cfg={{ ...widgetConfigs.timelineToxicity, color: col('timelineToxicity') }} />)
         const wGauge = wgt('toxicityGauge', 'Toxicity Severity', false,
           (() => { const s = calcStats(getFiltered('toxicityGauge'))
-            return <ToxicityGauge score={s.toxicity.average_toxicity_score} /> })())
+            return <ToxicityGauge score={s.toxicity.average_toxicity_score} accentColor={col('toxicityGauge')} /> })())
         const wRoster = wgt('participantRoster', 'Participant Roster', true,
-          <ParticipantRoster stats={getParticipantStats()} />)
+          <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
         const wStream = wgt('messageStream', 'Message Stream', true,
-          <MessageStream messages={getFiltered('messageStream')} cfg={widgetConfigs.messageStream} />)
+          <MessageStream messages={getFiltered('messageStream')} cfg={widgetConfigs.messageStream} participantColors={PARTICIPANT_COLORS} participants={participants} />)
 
-        // ── Viste per sidebar ──────────────────────────────────────
-        const views = {
-
-          // Tutte le sezioni in ordine
-          overview: [wRoster, kpiMessages, kpiSentiment, kpiToxicity,
-                     wSentDist, wTimeSent, wTimeTox, wGauge, wStream],
-
-          // Solo widget legati al sentiment
-          sentiment: [kpiSentiment, wSentDist, wTimeSent],
-
-          // Solo widget legati alla tossicità
-          toxicity: [kpiToxicity, wTimeTox, wGauge],
-
-          // Solo il roster dei partecipanti
+        // ── Viste per sidebar (filtrate da visibleWidgets) ─────────
+        const allViews = {
+          overview:     [wRoster, kpiMessages, kpiSentiment, kpiToxicity,
+                         wSentDist, wTimeSent, wTimeTox, wGauge, wStream],
+          sentiment:    [kpiSentiment, wSentDist, wTimeSent],
+          toxicity:     [kpiToxicity, wTimeTox, wGauge],
           participants: [wRoster],
-
-          // Solo il feed dei messaggi + contatore
-          stream: [kpiMessages, wStream],
+          stream:       [kpiMessages, wStream],
         }
 
-        const activeWidgets = views[activeView] || views.overview
+        // FIX #1: filtra per visibleWidgets — il Customize torna a funzionare
+        const WIDGET_ID_MAP = {
+          messages: 'messages', sentiment: 'sentiment', toxicity: 'toxicity',
+          sentimentDist: 'sentimentDist', timelineSentiment: 'timelineSentiment',
+          timelineToxicity: 'timelineToxicity', toxicityGauge: 'toxicityGauge',
+          messageStream: 'messageStream', participantRoster: 'participantRoster',
+        }
+        const activeWidgets = (allViews[activeView] || allViews.overview)
+          .filter(w => {
+            const wid = w?.props?.id
+            return wid ? visibleWidgets[wid] !== false : true
+          })
 
         return (
           <div style={S.grid}>
@@ -575,9 +598,12 @@ function Wgt({ id, title, children, wide, cfg, participants, onCfg, open, setOpe
 // ─────────────────────────────────────────────────────────────────────────────
 // POLARITY KPI
 // ─────────────────────────────────────────────────────────────────────────────
-function PolarityKPI({ polarity, posRatio }) {
+function PolarityKPI({ polarity, posRatio, accentColor }) {
   const p     = polarity ?? 0
-  const color = p >  0.05 ? '#34C759' : p < -0.05 ? '#FF3B30' : '#FFCC00'
+  // Se c'è un partecipante selezionato usa il suo colore per la UI,
+  // ma mantieni il colore semantico (verde/rosso) per l'indicatore della barra
+  const semanticColor = p >  0.05 ? '#34C759' : p < -0.05 ? '#FF3B30' : '#FFCC00'
+  const color = accentColor || semanticColor
   const label = p >  0.5  ? 'Very Positive' : p >  0.1 ? 'Positive'
               : p < -0.5  ? 'Very Negative' : p < -0.1 ? 'Negative' : 'Neutral'
   const cur   = ((p + 1) / 2) * 100
@@ -608,11 +634,12 @@ function PolarityKPI({ polarity, posRatio }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const AV_COLORS = ['#5856D6','#007AFF','#34C759','#FF9500','#FF2D55','#BF5AF2']
 
-function ParticipantRoster({ stats }) {
+function ParticipantRoster({ stats, participantColors }) {
   if (!stats?.length) return <div style={S.empty}>No data yet — press Play</div>
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 14 }}>
       {stats.map((p, i) => {
+        const pColor = (participantColors && participantColors[i]) || AV_COLORS[i % AV_COLORS.length]
         const n   = p.stats.total_messages
         const d   = p.stats.sentiment.distribution
         const pol = p.stats.sentiment.average_polarity ?? 0
@@ -622,9 +649,9 @@ function ParticipantRoster({ stats }) {
           : d.negative > d.positive && d.negative >= d.neutral ? 'negative' : 'neutral'
         const dc  = { positive: '#34C759', neutral: '#FFCC00', negative: '#FF3B30' }[dom]
         return (
-          <div key={p.id} style={R.card}>
+          <div key={p.id} style={{ ...R.card, borderColor: pColor + '44' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ ...R.av, backgroundColor: AV_COLORS[i % AV_COLORS.length] }}>
+              <div style={{ ...R.av, backgroundColor: pColor }}>
                 {p.name.slice(0,2).toUpperCase()}
               </div>
               <div>
@@ -673,13 +700,24 @@ const R = {
 function SentimentDistChart({ data, cfg }) {
   const tot = (data.positive||0)+(data.neutral||0)+(data.negative||0)
   if (tot === 0) return <div style={S.empty}>No data yet</div>
+  // Se c'è un colore partecipante attivo, crea gradazioni del suo colore
+  // altrimenti usa i colori semantici standard (verde/giallo/rosso)
+  const hasParticipant = cfg.color !== cfg._defaultColor
+  const posCol = '#34C759'
+  const neuCol = '#FFCC00'
+  const negCol = '#FF3B30'
+  const acCol  = cfg.color || posCol
+  // Gradazioni: pieno → 70% opacità → 40% opacità
+  const [c1, c2, c3] = hasParticipant
+    ? [acCol, acCol + 'AA', acCol + '66']
+    : [posCol, neuCol, negCol]
   return (
     <div style={{ height: 140 }}>
       <Bar
         data={{ labels:['Distribution'], datasets:[
-          { label:'Positive', data:[data.positive], backgroundColor:'#34C759', borderRadius:6 },
-          { label:'Neutral',  data:[data.neutral],  backgroundColor:'#FFCC00', borderRadius:6 },
-          { label:'Negative', data:[data.negative], backgroundColor:'#FF3B30', borderRadius:6 }
+          { label:'Positive', data:[data.positive], backgroundColor:c1, borderRadius:6 },
+          { label:'Neutral',  data:[data.neutral],  backgroundColor:c2, borderRadius:6 },
+          { label:'Negative', data:[data.negative], backgroundColor:c3, borderRadius:6 }
         ]}}
         options={{ indexAxis:'y', responsive:true, maintainAspectRatio:false, animation:{ duration:250 },
           plugins:{ legend:{ display:cfg.showLabels, position:'bottom', labels:{ color:'#8e8e93', font:{ size:11 } } },
@@ -722,10 +760,12 @@ function TimelineChart({ messages, cfg }) {
   )
 }
 
-function ToxicityGauge({ score }) {
+function ToxicityGauge({ score, accentColor }) {
   const p = Math.min(Math.max(score||0,0),1)
   const lvl = p<0.33?'Low':p<0.66?'Medium':'High'
-  const col = p<0.33?'#34C759':p<0.66?'#FF9500':'#FF3B30'
+  const semanticCol = p<0.33?'#34C759':p<0.66?'#FF9500':'#FF3B30'
+  // Se c'è un partecipante attivo usa il suo colore, altrimenti usa il semantico
+  const col = accentColor || semanticCol
   return (
     <div style={{ height:140, position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <Doughnut
@@ -740,16 +780,22 @@ function ToxicityGauge({ score }) {
   )
 }
 
-function MessageStream({ messages, cfg }) {
+function MessageStream({ messages, cfg, participantColors, participants }) {
   if (!messages?.length) return <div style={S.empty}>No messages yet</div>
   const sc = l => ({ positive:'#34C759', neutral:'#FFCC00', negative:'#FF3B30' }[l]||'#8e8e93')
   const fmt = ts => { const p=ts.split(':'); return `${parseInt(p[1])}:${p[2].split('.')[0].padStart(2,'0')}` }
+  // Colore per nickname: usa il colore del partecipante se disponibile
+  const nickColor = (name) => {
+    if (!participantColors || !participants) return '#fff'
+    const idx = participants.findIndex(p => p.name === name)
+    return idx >= 0 ? (participantColors[idx] || '#fff') : '#fff'
+  }
   return (
     <div style={{ maxHeight:380, overflowY:'auto' }}>
       {[...messages].reverse().slice(0, cfg.limit||30).map((m,i) => (
         <div key={i} style={{ padding:'9px 0', borderBottom:'0.5px solid rgba(255,255,255,0.06)' }}>
           <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', marginBottom:3 }}>
-            <span style={{ fontSize:12, fontWeight:600, color:'#fff' }}>{m.nickname}</span>
+            <span style={{ fontSize:12, fontWeight:600, color: nickColor(m.nickname) }}>{m.nickname}</span>
             {cfg.showTimestamps && <span style={{ fontSize:11, color:'#636366' }}>{fmt(m.from)}</span>}
             <span style={{ fontSize:10, fontWeight:600, padding:'2px 6px', borderRadius:5, backgroundColor:sc(m.sentiment.label)+'22', color:sc(m.sentiment.label), textTransform:'uppercase' }}>
               {m.sentiment.label}
