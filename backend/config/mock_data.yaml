@@ -1,472 +1,558 @@
 sample_phrases:
-- 'docs: Add a theme step to Step by Step Tutorial'
-- '[Bug] Errors everywhere. Nothing works at all.'
-- I suppose that this code should be moved elsewhere, no?
-- How to increase max_array_len
-- Thanks for fixing it, you saved my OCD :P
-- 'put this in your initializer and forget all about it: ActiveRecord::Base.send(:attr_accessible, nil)'
-- This change makes me a bit nervous, and I see the possibility of very large performance issues on the database servers limiting to 1,000,000
-  rows. How about a rough sane limit of 25?
-- Please consider changing the name of PetSet before release
-- Why should be reverted? Give me a good reason...
-- 'Grammar: `Note that we have disabled OpenSSL''s internal session storage`. Also, `s/its/it''s/`'
-- Container fails to restart after upgrading (from 0.10.1 to 1.0.1)
-- 'BUG: index.name not preserved in concat in case of unequal object index'
-- Warning! Do not use this plugin
-- Taxonomy column in wp admin
-- Company Saved as Contact Name
-- Anub'rekhan not linked to his Crypt Guards.
-- OpenRCT is not working on Debian Buster because of libpng12 (and probably other distros)
-- yes, this is at least a source. Remains to figure if this is a good one or not :(
-- because I forgot to ammend them to the patch :( Thank you for noting and zergtmn for fixing.
-- ConcurrentModificationException when loading into world
-- 'Snotty people on #salt IRC channel'
-- i need one too for penance haste bug :-( only 2 heals not 3
-- No way to construct mixed dtype DataFrame without total copy, proposed solution
-- Farcry 5 Steering Bugs
-- this part was already in script file, only reordered, so diff looks very colored :D
-- '@riking You made me think I was going mad there, what with your talk of class variables! But yes, both are unnecessary.'
-- See note on the FileResolver implementation -- if $password can be optional, it should be defined as such here; otherwise, all implementations
-  need to make it a required argument.
-- Yeah, I also can think just of some ugly hacks :S. I'll try to do at least something to restore examples ...
-- I came to the same conclusion last night. Great minds, @vmg. Great minds.
-- Done, tests pass without the whitelist now
-- Provide `buildGoPackage` function with $GOPATH setuphook
-- mage file size problem after image.save(...) is this problem coming from OS or do we need to change something in the code..?
-- I guess there will be some functionality coming later which uses this, right? Anyway, dont forget to null out the ref once done.
-- This causes a style guide violation and makes it harder to move towards `onevar`
-- '@topfs2 *cough* ^^ :)'
-- Please stop screwing with Ethminer
-- of course :) fixed locally
-- Prompt to uninstall forumuae upon upgrade
-- So we can't put file larger than 4GiB in index? Sad.
-- Basename couses problems on embedded systems (OpenWRT)
-- I know a lot of server admins will be happy about that.
-- 'Setup warning : WebDAV interface seems to be broke'
-- 'Error when running build: "Cannot read property ''endsWith'' of undefined'
-- '[3.3.5] Trial of The Crusader - Event Problem'
-- 'Updated AS guide to include this new methods:'
-- Sad day indeed...
-- 'Remove the ""=<cmd>"" parts; it breaks ""brew audit"". (Also: run ""brew audit"".)'
-- This leaves the MySQL password in the output of ps. The same is true in the case of the environment variable used for postgres.
-- '@bigbasher I''m sorry to cause you any trouble. I''m not really sure what you mean. Was the download link incorrect? I pushed a tag of v2.1.0
-  which is the most recent version of the sdk.'
-- DQL injection is possible here. you should not pass the value (which is a user input) using string concatenation. You should use a query parameter
-  here and set the value for the parameter
-- jethro84530, your issue should be fixed in [11049]. Thank you for reporting!
-- Delete play-java/scala because they have been replaced by play2-java/scala
-- thanks :) it's something new from Cata or already used in Wotlk?
-- Should check if it's forked, and display old way if so, try to extract to a helper merge_request_email_helper for these displays
-- Oh my, I fail again
-- Might want to include some more debug info about which actorref didn't manage to activate within how long.
-- again not a big fan of this since it seems pretty costly?
-- I have no idea what this does
-- '[RFC] Move tests out of the source and source out of the tests'
-- AddSC_generic_pet_scripts() still needs to change :) and do not forget about ScriptLoader
-- 'fatal and strange: errors when overwriting Base.<, Base.==, etc. for Int64,Float64,etc. using @eval in v0.6.0'
-- Since it's going to be a hack anyway, can the Tempfile compatibility issue be solved like below? def is_a?(klass) Tempfile.ancestors.include?(klass)
-  || super end
-- Brilliant, this was causing a few issues for us. Any idea when this will be released?
-- Documentation issue
-- this one too :-)
-- Tracking issue for `asm` (inline assembly)
-- I hereby associate myself with this epic commit thread.
-- Kodi 18.0 stutters when playing DVD files (VIDEO_TS) on Fire TV
-- Using monochrome icon?
-- '[Request] Eloquent should support composite keys'
-- 'solvespace: Opening a file dialog crashes Solvespace on KDE Plasma'
-- There is no time calculation done anymore in getoverlay. Only the assignment for filling the fields in the overlay structure. Or what do you
-  mean?
-- Q about your release strategy (no bug)
-- Can you please rename it to addToWhitelist ? First time I read this I thought it was ment to add fields to a query
-- sinkLock should be held while querying m_encoder as it could be swapped out from under you.
-- '@Machiavelli - I WILL NOT SIR! Are you trying to get my hands burned even more!! You crazy man you!'
-- read the commit message ;P
-- Web3 typescript definition has no default export
-- Prerelease 28 and 29 fail to build maps
-- Allow vmware_inventory to control acceptance of SSL certificates
-- Exceptions should include a useful description based on what the failure is. Perhaps 'Invalid encryption scheme chosen'.
-- spells like mind flay or shadowstep won't work @ hostile targets with this
-- with movement opcode xD Thx ^^
-- Crap, I thought I had set the author right... *confused* This was entirely done by Lordron
-- How is this supposed to work as BCrypt::Password.new returns a hashed value, but unencrypted_password is the plaintext version of the password?
-  How will they ever be ==?
-- fixed in [11856] - Thank you very much!
-- good work, thanks.
-- Re-exporting one module's symbols from another
-- You're right. It's a fourth value. I have hideously embarrassed myself by getting it backwards.
-- Global variable scope rules lead to unintuitive behavior at the REPL/notebook
-- 'rust guide: Zooko finds some bits too fluffy'
-- 'should be: **if (isset($name) && ! empty($name) && $this->cookie($name))**'
-- 'RFC: change deprecation error handler to use weak_vendors mode by default'
-- Those changes can then be reverted again with
-- Was this extracted? Or just given the boot? AASM is broken in Rails 3 (though easy to fix), so is there no current state machine solution without
-  some hacking?
-- Automatically maintain ~/.Brewfile
-- start using gitflow
-- It is not if the buffer.readable() is false. :-)
-- separate group_vars being overwritten when deploying to same host
-- '> and you need the erasure to match the inherited implementation Isn''t that what bridge methods are for? The erased signature in the superclass
-  can be more specific than the corresponding signature in the superclass.'
-- crashes on OSX as well with (AbortableWait(m_loadPic,10) == WAIT_SIGNALED)
-- $.param encodes the characters which is why this didn't show up in our unit tests, i'll add a condition to our tests that verifies that strings
-  are also encoded.
-- I find it a bit weird to have a method called ""toValue"" that returns a key-value pair...
-- also, always have return types on your methods. Trust me, will save everyone involved a lot of headache and will add documentation.
-- Popovers in 2.3.0, why would title text display but not the body text
-- '6x Hunter and Troll Sham Issues #59eff3fe'
-- ah sorry, you use it in the bundle class. But this seems like a weird way
-- Open an RFC to discuss decision to revert License and remove Jamie
-- These seems a bit silly - you don't need to hash the uniqid, it's already supposed to be unique!
-- this was done because when you double click I did not want it to include the "". sorry its confusing.
-- WatchOptions passed from command line don't override config
-- 'Proposal: docker embedded DNS server'
-- Please stop censoring my comments....
-- obviously :( And fixed in 12052
-- 'Terribly slow. If you want an alternative implementation:'
-- and, or doesn't work in DQL
-- Hi, you need to add the ""withCredentials"" flag after xhr.open(""post"", url, true); (line 729 in your changed file). Otherwise it will throw
-  InvalidStateError in IE10 (and safari mobile 5)
-- Classic JGit. Oh well. Thanks for taking the time to look into this. I've reverted the assert to the old one. :)
-- This sounds really weird. Shouldn't it be an abstract factory instead? (Yes, I don't like the service name being passed to `createService`,
-  it's a violation of the LSP
-- We don't like patches from gists very much.
-- Aww I was using that :(
-- Unorthogonal interface TextField Vs. HiddenField
-- doesn't matter, just a string. but thanks for checking ;)
-- This is most likely a bad default
-- I wonder how much of a performance hit we'll be taking for this... strict mode is has significant performance costs that are attributed to the
-  runtime checks that are required. JFTR... -1
-- Support installing multiple release channels
-- 'I like. It''s not obvious in the diff, but does this allow setting the value ''once'' like so: ```php $this->Html->pathPrefix = ''//cakephp.org/css'';
-  $this->Html->css(''foo''); // $this->Html->css(array(''bar'', ''spam''); //'
-- I'm still hoping we can think up a way to avoid this happening, but I'm at a complete loss right now...
-- Jeremy, don't you think that by removing commas from separators you broke compatibility with older browsers/webservers? As for our project,
-  you did. We have a lot of ""Tampered at cookie"" exp-s now. Thank you very much.
-- delay helper is DEPRECATED, but no transition options are given
-- Use ES6 promises and better document state callbacks/events
-- 'Could you check if it fixes the performance problem reported here: But I think, that when the user just need to change the selected value programmatically,
-  it''s a shame to have to refresh (recreate) the whole'
-- Just assert? This fprintf() + abort() style is kind of weird. (I know e.g. NODE_UNWRAP() does the same thing. Also kind of weird IMO.)
-- I work with GCC and slave_itr = slaveGuidList.erase(slave_itr); works wonderful
-- Dire Maul - Lasher loot broken
-- Rhoban Football Club logo
-- '@jdalton - I can''t comment on that, I haven''t reserched those browsers for significance specifically (but note: Firefox has much slower conversion
-  rates).'
-- This line might be going a little too far. It obfuscates whats going on by putting a really really big ternary in the way. Can you roll it back
-  or try to make it a little more readable?
-- abstract types with fields
-- When Stylus is disabled it continues to inject a style element
-- That's what obfuscation does. We do our best to unobfuscate but only for class names. This is a mojang thing, not us.
-- Framerate change not work in 18, both x32 and x64
-- Cannot Switch Ride Building Screen from Group By Track Types to Group By Rides
-- When LoadError#path is nil LoadError#is_missing? throws NoMethodError
-- Looks like the book got pulled, link doesn't work for me. :(
-- module naming
-- 'Yeah! Confirmed this commit fix: Thank you Vladimir ;-)'
-- GH6848 silently changed series.sort from stable to unstable sort
-- tiny bracket issue
-- Shouldn't we validate the max-tries value?
-- '@fritsch well on my sandy bridge it crashed the gpu. As far as I know there is no way to ask vaapi what it support.'
-- That's because I suck at what I do. Fixed now, sorry. 132621c230f76192d3605b5e1b5ae0d58bff57bc
-- So for example RSA's scripts where they developed a Boss_Spell_Table is useless or will be not compatible?
-- Yeah I was kind of irritated about the m4 directory. I forgot about set.
-- 'I just change it to my original idea: unsupported encoding != MPG123_ENC_SIGNED_16 << for path ...'
-- Cool, this was my headache. I will try this later, need to go to work now
-- Time series support in Base?
-- One to many relationship doesn't behave as expected when using collections in forms
-- Minion fails to start after bootstrap on Raspberry PI
-- '[Request] Form number input helper'
-- You realize that you post on 7 month old commit?
-- ok. than thanks for this one.
-- Thank you all for contributing, fixed in 11811
-- ugh stupid search
-- '@petere Whichever is preferred. I can re-add the extra line upstream if that is idiomatic Homebrew.'
-- Cowsay should not be enabled by default
-- I can't play some mp4 files.
-- Thank you guys :)
-- Cannot run test suite
-- Changes to homebrew-cask installation behaviour
-- delay helper is DEPRECATED
-- ActiveRecord.where(hash).create callbacks inherit the where(hash)
-- hey guys, glad to see mangos back!
-- Rails falls back on non-thread-safe autoloading even when eager_load is true
-- Rethink supporting Windows XP
-- Oh, right. i totally missed that one.
-- Stop using my tools
-- '@homakov is an impatient little fuck who needs to be put to death.'
-- 'Error: Unable to rebuild apk with apktool'
-- Who knows :) Will change.
-- Perhaps this `""t('.make_something')""`
-- If the internet wasn't full of spammers maybe :) I think github is fine, just needs some extra tweaks.
-- 'ISSUE: Can''t get systemd to run with 1.11'
-- Thanks for feedback. Fixed.
-- Width and height are switched when a vertically-oriented game is loaded
-- Stable URLs can't point at the 'master' tarball, as that is liable to change at any time, breaking the checksum. (Also, don't use nodeload,
-  just
-- Datestamp in titles results in duplicate titles if taken on the same day
-- '[4.3.4] Update object and player - player visibility'
-- Does this show up elsewhere? Seems a useful method, but I could be wrong.
-- Figured out who the credits go to, it's @Fredi. :)
-- Yes. Sorry for this. Schmoo asked me about the author and I didn't pay too much attention to the patch itself. I thought it was something else.
-- Great! Thank you again!
-- '@jonleighton you''re right! Sorry about that. :( Looks like this code is new in 3.1. Are you comfortable with this going out for rc6?'
-- Export OrderedHash to XML and JSON
-- Not anymore. Movement flags are now assigned dynamically and this controls whether the creature can ever get DisableGravity flag
-- I knew you couldn't keep up a serious conversation... disappointed (but not surprised).
-- Routes redirect helper should honor request format
-- while i agree with jdalton's sentiment, can someone kick him off this thread unless he can be more productive and useful!? :) haha, jdd.
-- Please remove trackers & advertising
-- An experience with NixOS.
-- So that I don't forget. We also need to change `versionFormat`!
-- monster look direction
-- Using --bind all by default is a security risk
-- It'd be good to also add a test where the hash contains more keys than the required ones, and it should not raise.
-- Why abs if i is known to be negative?
-- Thanks for being so responsive to the suggestions!
-- Since both methods are called UnSummon, have you considered making it a virtual instead of this casting?
-- 'Assertion failed: ok (mailbox.cpp:84)'
-- 'That''s what''s so weird: I have the timezone line in my config file, and it still throws the error. If I switch to my staging branch, I don''t
-  get it, so I assumed it was this change, but maybe not?'
-- 'thank you for improving movement system. now, i can see the face of boss when combat : )'
-- I changed it after re-looking over it =)
-- ok now again :D where can i get new map,vmaps extractor for windows ? compiled ones plz.. dont say me to compile etc.. i have reasons.
-- delegates (or their equivalent) should be used as much as possible, saves having to change the code in a bunch of places, and accidentally forgetting
-  one or introducing a typo in one spot or something. GJ
-- Add support for OMEMO Encyrption
-- 'WHO DECIDED WE WERE GOING TO USE MM/DD/YYYY I JUST SPEND 2 HOURS DEBUGGING THIS CRAPOLA I HATE CUCUMBER %^@$(!&^&@$&*!*(@!@%^#$%^!@%^@!#!$#@#!@#!$!!#(*(*&!@)$:"">{>"":'
-- gpx tracks in 2.11.1
-- 'Sorry but this breaks the build. The SHA1 is incorrect. From the mosh mailing list: > mosh 1.2.3 has been released. > > The source code is
-  at: > > > SHA-1: 3bbcc560a5968806681465d83758d5c'
-- Chrome userAgent styles for input[type="date"] etc change display style to inline-flex
-- Compiling against net451 has multiple errors that are not there for netstandard2.0
-- oh, forget it, my bad; maybe add a comment?
-- 'Hm, figured it out. Turns out it was git being stupid :( Edit: PR #1123'
-- Fixed in 5057a8156dc0b2f8664ca952d1da2954f385b2f2. Thanks and sorry. :)
-- Oh sorry -.- my fail
-- 'Strings: Improve Wording & Grammar'
-- '@sebastianbergmann, I think this is the final tweak :). I don''t think it''s necessary to rush out a release for this corner case, though.'
-- 'Really... :smile:'
-- Ah-ha! Good to know :D
-- Honestly I prefer the original code, it's easier to read and has no excessively large lines of code
-- Would the docker community like to accept new performance/stress/stability test cases?
-- NOKIGIRI IS HARD PLEZ HELP
-- i hope the next change will be fixing a bug that aura 269 affects resilience =)
-- I think this was the only comment you skipped =)
-- Summary Buff- and Aura-Stacking
-- Does not accept any files or text in Palemoon browser
-- Improve apropos display
-- 'Yes, I agree. Thanks for pointing that out. Changed in:'
-- Disable specific filter on single site
-- I was following the style of the rest of requests, if wanted I'll clean up this and the other places I saw it.
-- What the hell did you mean here?
-- I have the same error as starpeak :(
-- I don't like that syntax at all. It's not type safe, and therefore doesn't prevent silly misstakes or help in refactoring ""foo"" must be('defined)
-  cluster.convergence must be('definod)
-- The code sniffer didn't barf on brace on new line? :(
-- Also, the bug tracker said Akismet didn't like all of my links to the MDN articles and then everything crashed out and showed me Python errors.
-  It's probably time to move the jQuery tracker to GitHub :)
-- And last but not the least, it is not even related to the other change you made.
-- Oh, my apologies... :( I will remember that.
-- Release quality 17.09
-- Allow user to zoom track text
-- That's what I thought originally but the unix-y people at Joyent don't mind. ""Fork"" is cute.
-- That's great! Love to hear that ;)
-- Great, let's merge!
-- yes, the repository version is usually outdated and even if it's not right now it will install some plugins at the system level which from my
-  experience can be problematic
-- sorry, i'm not at work anymore. can check 32bit earliest tomorrow. :-/
-- About SparseVectors
-- 'The BC break is necessary since it is currently not working properly :worried:'
-- 'Broken sample code:'
-- Translate queued mails (localization)
-- jajajajajajajajaja xD ""Happy for sure
-- Un-assigned vars need to go above assigned vars ;)
-- '[LOOT/FIX] Brightly Colored Egg (45072)'
-- How to use themeprovider without wrapping entire app?
-- Considering there's a default, and `getEncoding()` simply returns the property, I'd just use `$this->encoding` here.
-- Add with relative path to parent directory fails with "Forbidden path
-- EnderIO combined with AE2 and ThermalExpansion
-- 'Yeah, this broke plugin gem loading for me too. Case in point: BackgrounDRb wants the packet gem, which is installed in vendor/gems -- worked
-  fine in 4f53db0, broken in 2bf58aa.'
-- '@opdenkamp Hi Lars, I''m afraid that you forgot to upload the file to the server. If this is automated and just takes some time, I apologize.'
-- Why this change? (I don't see any mention in commit message about this).
-- How do I combine several images into one via Dockerfile
-- 'People who use Capistrano deploy will have serious problems: ('
-- Namespace Routing Behavior differs between development/test and production
-- Updating lots of changes.
-- 'pbkbfd: Don''t use brittle C functions'
-- Docker embarrasing slow on execution
-- worked on css and mobile responsiveness
-- Okay, that makes sense. I'll change it to debug. Better explanations would be nice, would definitely be a neat feature.
-- Navbar issues
-- do you mean 1f96ccdfe24ffedd9eb303f73f5985a3a127e203 by cyberium? saw this while trying to backport schmooz' patch and cyberiums is missing
-  on mangos one :)
-- sounds like a good plan to me... i belive the term that comes to mind then is ""put up or ...."" you know the rest...
-- '[3.3.5] Spell Reflect vs Channel Spells, multiple reflections'
-- '@asofold How am I lying? I expect all competent developers to check that their non-Bukkit code compiles with every RB and minecraft update.
-  Am I foolish to expect that?'
-- ussing assertEquals($expected, $validator->isValid($color)) make the data provider reusable by other tests
-- Provide a way to make the exported symbols of a package available under qualified names and to not make private symbols available
-- This is bad, returning early is a good thing.
-- How do you propose to specify NAT rules on bridges?
-- 'this is broken on PHP 5.3. The 4th parameter is only accepted as of PHP 5.4:'
-- trace mysql use "brave-instrumentation-mysql" is not using
-- Why signed if you don't allow values < 0 anyway?
-- Need to update the checksum!
-- This exception message looks weird to me
-- Book uses academic term "arity" without definition
-- Bump major version before releasing license change.
-- Although I love warpten, I am sorry if I go to fast. code=trinity
-- Device Plugin Race
-- much better now
-- '`search` gives bad results when there are multiple casks with the same tokens across repos'
-- Cannot edit whatever .oxevfn is
-- Bootstrap Anchor plugin
-- Arena frames
-- seems you even didn't tested this change. This bug already fixed by this commit (see DB part)
-- What happened to the navigation for smartphones?
-- '`/>` is unnecessary with this doctype ;)'
-- What does that mean?
-- I'm so glad you gave detailed information about this update.
-- Leela Zero vs Golaxy ,the 4th game (LZ win)
-- brew update is destructive linking python3 to python
-- this commit caused crash on totem summon
-- Eager loading with specific fields should include Relationship's keys by default.
-- antivirus module uses wrong ClamAV defaults on Debian
-- 'Regarding issue #132'
-- network interface is renamed although NAME has been set by udev rule
-- 'Mojo::File::spurt: Wide character in syswrite'
-- '[Templating] - Unable to find template'
-- no, ! should not throw exceptions in 2.1
-- 'Bug: warnings when using the library about "androidTestApi" and "androidTestCompile" being used'
-- EtherZero.org is incorrectly flagged
-- Cross-namespace Ingress
-- Formula updated to address this (would be nice if brew audit warned about this...)
-- I think this one is less efficient than a separate `div` and `%` (because of the intermediate array). Could you check?
-- Luke had a pullreq some time ago which introduced this abstraction, yes. I think it's overkill. Also, I want to extend it to transaction hashes
-  too.
-- '[Feature] Allow custom publish subdirectory'
-- +1 e000... Lets play ping pong :)
-- Try and fix relationships with downstream
-- 'Using Uglify-JS debug prints wrong logs (with "color: #XXXXX" string)'
-- Add the ability to map containers to a user host-side
-- Well, no. The forward slashes are creating the problems, they're supposed to be hashes. Or do you mean the names?
-- WHEN REPORTING ERRORS, INCLUDE THE GOD DAMNED ERRORMESSAGE/COMPILERERRORS!
-- I need to find a better way to represent corrupt data. From what I understand, it isn't idiomatic to throw exceptions that are not future encoded
-  within Finagle.
-- some weird indentation here...
-- '@jonleighton said this: I just do his bidding. ;)'
-- '@wsoltys Sorry bother you but i still get no git version also got some annoying virus warning. see xbmc forum'
-- There's a way to rethrow an exception so that you don't lose the stack. There's I'd recommend using that so we don't just lose the stack by
-  rethrowing the
-- '[DB/SAI] Mystery of the Infinite (12470)'
-- Well my comment was related to przemratajczak's one. I'm sorry for accidentaly being somewhat cruel, anyway.
-- Mass assignment vulnerability - how to force dev. define attr_accesible?
-- '[6.x] Encounter Progress Panel'
-- Pet Pathing & Pet LoS
-- HTML::Document fails to infer closing tag when final node has no children
-- I don't think it should, yet
-- The OS X menubar client is spamming my apache/owncloud log file with PROPFIND requests
-- Nice - Awesome work, thx Kero and other testers for testing it, and ofc thx to You Ambal :)
-- I think it would make ""more sense"" to let 08 extend from 07. At least it sounds more logic, even if it will not matter :)
-- Add a version of the combine-filter that merges in reversed order
-- ngShowDirective adds the ng-hide-remove class when the element is already hidden
-- It wouldn't be in net.minecraft.server or obfuscated if it were new :) The changed lines are always marked with //craftbukkit.
-- 'Tracking issue for RFC 2115: In-band lifetime bindings'
-- Route 'key0' should declare a screen. For example
-- the naming of these 2 services is weird. The first one uses the extractors but the second one is not an extractor. It uses loaders
-- Yeah, I had it like this to start off with but I got carried away trying to make everything line up nicely. :) I'll put it back how it was and
-  see what you think.
-- flatten images - merge multiple layers into a single one
-- Ah, my bad... I confused 'double' for a noun! This sounds good.
-- How to set up Open WRT on Raspbian with docker? Help me please!
-- 'win32: ''sqrt'' : ambiguous call to overloaded function while trying to match the argument list ''(unsigned int)'
-- No docker0 on docker for mac?
-- Fixed as well. *Very* nice catch!
-- this fixed ""uninitialized constant HoptoadNotifier"" for me, without diaspora is not runable :(
-- Twig syntax highlighting broken
-- readdlm test failure on 64-bit Fedora with LLVM 3.4
-- And no even if the encoder produce nothing there is overhead as we need to store it on every encode as we not know if the next call will maybe
-  not produce something
-- '```ruby def to_params @to_params ||= to_hash.map do |key, value| ""#{key}=#{value}"" end.join(""&"") end ``` FTFY.'
-- Ah, no problem :) Anyway as there is no edit possibility im replying again; Thanks for next part of dual spec, looking forward for talents set,
-  which will make it all complete, good luck! ;)
-- Add a function to rename user
-- scratch that... it's under 70 seconds now. (hyperthreading is weird.)
-- thanks you, i understand now
-- This fails the test, dude. :-) You also called map.remove with wrong argument.
-- Cannot comment anymore
-- Integrate Docile.jl and Markdown.jl into Base
-- 'Proposal: Template object for in-container configuration files'
-- Glad I could help! :-)
-- Confirmed Shield Slam ability is now bugged!
-- Oh, whoops! Sorry about that!
-- :O EVENT_TYPE 73....? Not in the wiki..? What is this sorcery!
-- And WOW, how the crap did _that_ happen? Apologies for the double-post. I blame sunspots.
-- '@Qix- So if I just do this, you''ll get mad and start wasting your time on this?'
-- Services without selectors cannot forward to other services as documented
-- ^ that line and this one :)
-- i understood that after a chat with vladimir :P
-- whoops i meant removing REDFINGER
-- That typo was just crazy!
-- Quest NPC Missing Quest 3.3.5
-- Using statement should be placed inside the namespace declaration
-- '[Proposal] Allow per-project installations for Homestead 2'
-- missing icons in Lxde
-- customize bootstrap results in 1 potentially wrong variable in media query
-- 'DB/SAI: Initiate Emeline and Initiate Colin'
-- Oh forget it, `config_attribute` is being defined below :)
-- chold! doesn't act as expected
-- Should the result of this deferred chaining map go into a new array instead of reassigning `requests`?
-- Are we still doing breaking changes in minor releases?
-- Massive log file.
-- is `/` allowed character in generated cookie? Then it should be enclosed in quotes, otherwise config will barf.
-- 'Change this under and it''ll work again: # external libcec USE_EXTERNAL_LIBCEC=0 if test ""$use_libcec"" = ""yes""; then if test ""$use_external_libcec""
-  = ""yes""; then USE_EXTERNAL_LIBCEC=1; PK'
-- Rails 5.1.4 Belongs_to validation
-- Build profiling libraries in 'haskellPackages' by default?
-- Alright, that's just sad.
-- Big Thanks to all for help =)
-- No problems at all, thanks for reviewing the changes :)
-- 'V3: New formatters are not equivalent to old formatters, broken logs after migration'
-- I want to reach a consensus on this, but I agree with you Taylor. += FTW!
-- '[GDB] Crash at Unit::IsIMmunedToSpellEffect'
-- you fucken morans
-- Oh, thank for explain.. but still, there is not ""slice"" symbol in core? I think yes (but don't verify) :-)
-- Some comments in here would be awesome
-- Still, we need a potentially unlimited number of buffers. What should we do with them if we don't need them any more if we don't let them be
-  garbage collected?
-- Docker client does not handle 401 Unauthorized response codes from registry correctly
-- Why not, what's the problem supporting ""/""?
-- '[Enhancement] KeyBind to Hide All JEI'
-- Document full dependencies
-- 'Maybe jshint should get an option to whitelist this, so we could use comment-option within this function. Either way, this is a pretty nice
-  hack to get around that :wink2:'
-- weird formatting. Remove the spaces before and after the parenthesis
-- Hm, we'd be creating extra arrays anyway to generate a final hash, will end up being the same as the current `hash.merge` I think. I can rollback
-  or use your change if that's not a problem :)
-- This is a signature change, and should be removed.
-- The initial code has not used regex so I have opted for this. I also do not see much difference. It could fail only if somebody would have admin
-  attached under something like ``/123/admin/cms/page/``.
-- Much appreciated.
-- Deep Wounds damage still doesn't scale according to damage modfiers and/or doesn't stack right. That's another critical problem.
-- fix or document proper configuration for specifying default output order
-- It is not possible. :( may be, we can introduce a little **optional** coupling by allow the end user to give a translatorInterface to `getErrorsAsArray`
-  so from the controller `$form->getErrorsAsArray($translator);`
-- Gridmonster fools us all !
-- 'I installed MiKTeX under win10 and the path of the bin directory is set with wrong slashes: C:\Users\me\AppData\Local\Programs\MiKTeX 2.9\miktex/bin/x64'
-- Experimental apps are always shown
-- '@ncr what you did seems like a hack. I solved the issue moving from ruby 1.9.1 to 1.9.2'
-- I agree - lets fix it up there as well....
-- I18n locale may be reset to :en if called from a plugin/gem
 - So maybe we could do AR attributes method faster? Or have a new method called attributed_hash? My point is that ActiveModel ahould rely on a
   method (like attributes_hash) instead of an instance variable as API.
-- Does getaddrinfo need to take the ENV lock?
-- Tracking issue for `:vis` macro matcher
-- '[5.0] Session Persistance Issues'
+- 'solvespace: Opening a file dialog crashes Solvespace on KDE Plasma'
+- I'm frustrated that we didn't catch this issue earlier in the process.
 - Not being able to only choose zones on a specific planet
+- Delete play-java/scala because they have been replaced by play2-java/scala
+- Prerelease 28 and 29 fail to build maps
+- Of course the issue only happens in production, never locally.
+- jajajajajajajajaja xD ""Happy for sure
+- This is exactly the kind of thinking that has been slowing us down.
+- Experimental apps are always shown
+- delay helper is DEPRECATED
+- Someone merged this without reviewing it. Again.
+- worked on css and mobile responsiveness
+- I was following the style of the rest of requests, if wanted I'll clean up this and the other places I saw it.
+- Compiling against net451 has multiple errors that are not there for netstandard2.0
+- Disable specific filter on single site
+- What does that mean?
+- yes, the repository version is usually outdated and even if it's not right now it will install some plugins at the system level which from my
+  experience can be problematic
+- That's a reasonable approach given our constraints.
+- I'm done listening to this nonsense, it's a total waste of my time.
+- You have absolutely no idea what you're talking about.
+- 'After reading through all the comments I think the consensus is clear: this needs a complete redesign rather than incremental patches.'
+- No docker0 on docker for mac?
+- some weird indentation here...
+- seems you even didn't tested this change. This bug already fixed by this commit (see DB part)
+- Luke had a pullreq some time ago which introduced this abstraction, yes. I think it's overkill. Also, I want to extend it to transaction hashes
+  too.
+- I hereby associate myself with this epic commit thread.
+- Allow user to zoom track text
+- I changed it after re-looking over it =)
+- I wonder how much of a performance hit we'll be taking for this... strict mode is has significant performance costs that are attributed to the
+  runtime checks that are required. JFTR... -1
+- Terrible design decision that will haunt this project for years.
+- Please stop censoring my comments....
+- sinkLock should be held while querying m_encoder as it could be swapped out from under you.
+- Rhoban Football Club logo
+- '@wsoltys Sorry bother you but i still get no git version also got some annoying virus warning. see xbmc forum'
+- Unorthogonal interface TextField Vs. HiddenField
+- Outstanding contribution, well documented and thoroughly tested.
+- Basename couses problems on embedded systems (OpenWRT)
+- Oh, right. i totally missed that one.
+- Thanks for feedback. Fixed.
+- of course :) fixed locally
+- Who else needs to be involved in this decision?
+- 'Strings: Improve Wording & Grammar'
+- We keep discussing the same issues without making real progress.
+- Some comments in here would be awesome
+- The last sprint velocity was lower than expected.
+- Integrate Docile.jl and Markdown.jl into Base
+- This is a huge step forward for the team, congratulations.
+- '[3.3.5] Spell Reflect vs Channel Spells, multiple reflections'
+- Please stop screwing with Ethminer
+- We're going in circles and I'm not sure why we can't just commit to a path.
+- Oh wonderful, the build fails again on the same line as last week.
+- Container fails to restart after upgrading (from 0.10.1 to 1.0.1)
+- weird formatting. Remove the spaces before and after the parenthesis
+- Build profiling libraries in 'haskellPackages' by default?
+- I think we can do better than this, but it's a reasonable first draft.
+- Excellent idea, I am sure nobody will ever notice this regression.
+- Alright, that's just sad.
+- How is this supposed to work as BCrypt::Password.new returns a hashed value, but unencrypted_password is the plaintext version of the password?
+  How will they ever be ==?
+- Does not accept any files or text in Palemoon browser
+- This is a signature change, and should be removed.
+- with movement opcode xD Thx ^^
+- '@sebastianbergmann, I think this is the final tweak :). I don''t think it''s necessary to rush out a release for this corner case, though.'
+- What are the main blockers right now that we need to address?
+- Thanks for being so responsive to the suggestions!
+- You're wasting everyone's time with this, we've been over it multiple times.
+- Allow vmware_inventory to control acceptance of SSL certificates
+- do you mean 1f96ccdfe24ffedd9eb303f73f5985a3a127e203 by cyberium? saw this while trying to backport schmooz' patch and cyberiums is missing
+  on mangos one :)
+- That's what I thought originally but the unix-y people at Joyent don't mind. ""Fork"" is cute.
+- How do you propose to specify NAT rules on bridges?
+- That typo was just crazy!
+- Popovers in 2.3.0, why would title text display but not the body text
+- I support this proposal, let's move forward.
+- Perfect, now we have two different APIs doing the exact same thing.
+- Rails 5.1.4 Belongs_to validation
+- What happened to the navigation for smartphones?
+- Time series support in Base?
+- and, or doesn't work in DQL
+- How do I combine several images into one via Dockerfile
+- The feature itself is good but the implementation is completely wrong.
+- Route 'key0' should declare a screen. For example
+- Deep Wounds damage still doesn't scale according to damage modfiers and/or doesn't stack right. That's another critical problem.
+- 'docs: Add a theme step to Step by Step Tutorial'
+- Incredible improvement, the new API is so much cleaner than before.
+- Sure, let's try it your way this time.
+- I have the same error as starpeak :(
+- I don't think it should, yet
+- Does this show up elsewhere? Seems a useful method, but I could be wrong.
+- I feel like my concerns are not being taken seriously here.
+- I find it a bit weird to have a method called ""toValue"" that returns a key-value pair...
+- 'Yeah! Confirmed this commit fix: Thank you Vladimir ;-)'
+- 'After spending three days debugging this I finally found the root cause: the default configuration silently ignores the timeout parameter.'
+- I need to drop off in five minutes, can we cover the critical items first?
+- I'm skeptical this will actually solve the underlying problem.
+- abstract types with fields
+- So we can't put file larger than 4GiB in index? Sad.
+- 'RFC: change deprecation error handler to use weak_vendors mode by default'
+- '@jdalton - I can''t comment on that, I haven''t reserched those browsers for significance specifically (but note: Firefox has much slower conversion
+  rates).'
+- Unfortunately this proposal has some fundamental issues we need to address first.
+- Hm, we'd be creating extra arrays anyway to generate a final hash, will end up being the same as the current `hash.merge` I think. I can rollback
+  or use your change if that's not a problem :)
+- '@petere Whichever is preferred. I can re-add the extra line upstream if that is idiomatic Homebrew.'
+- ah sorry, you use it in the bundle class. But this seems like a weird way
+- '@asofold How am I lying? I expect all competent developers to check that their non-Bukkit code compiles with every RB and minecraft update.
+  Am I foolish to expect that?'
+- Try and fix relationships with downstream
+- 'That''s what''s so weird: I have the timezone line in my config file, and it still throws the error. If I switch to my staging branch, I don''t
+  get it, so I assumed it was this change, but maybe not?'
+- I have been using this library for two years and this is by far the most confusing breaking change you have ever introduced without a migration
+  guide.
+- '@ncr what you did seems like a hack. I solved the issue moving from ruby 1.9.1 to 1.9.2'
+- This change was rolled back in commit a3f9e because it caused a 40% slowdown in the most common usage pattern.
+- Let's park this discussion and come back to it in the next sprint.
+- 'Setup warning : WebDAV interface seems to be broke'
+- mage file size problem after image.save(...) is this problem coming from OS or do we need to change something in the code..?
+- Un-assigned vars need to go above assigned vars ;)
+- I have no idea what this does
+- Thanks for the quick response, unfortunately this solution does not work either.
+- delegates (or their equivalent) should be used as much as possible, saves having to change the code in a bunch of places, and accidentally forgetting
+  one or introducing a typo in one spot or something. GJ
+- sounds like a good plan to me... i belive the term that comes to mind then is ""put up or ...."" you know the rest...
+- Summary Buff- and Aura-Stacking
+- The documentation says this function is deprecated but there is no replacement and no timeline for removal, which makes planning impossible.
+- I do not understand how this ever passed code review.
+- Global variable scope rules lead to unintuitive behavior at the REPL/notebook
+- Oh forget it, `config_attribute` is being defined below :)
+- whoops i meant removing REDFINGER
+- Excellent work on the prototype, it exceeded my expectations.
+- That makes sense to me, I'm on board with the plan.
+- I knew you couldn't keep up a serious conversation... disappointed (but not surprised).
+- i understood that after a chat with vladimir :P
+- We seem to be missing the bigger picture here.
+- AddSC_generic_pet_scripts() still needs to change :) and do not forget about ScriptLoader
+- How to set up Open WRT on Raspbian with docker? Help me please!
+- I think it would make ""more sense"" to let 08 extend from 07. At least it sounds more logic, even if it will not matter :)
+- I think this one is less efficient than a separate `div` and `%` (because of the intermediate array). Could you check?
+- I can't play some mp4 files.
+- Quest NPC Missing Quest 3.3.5
+- WatchOptions passed from command line don't override config
+- So that I don't forget. We also need to change `versionFormat`!
+- 'BUG: index.name not preserved in concat in case of unequal object index'
+- 'Mojo::File::spurt: Wide character in syswrite'
+- I honestly can't believe we're still discussing such a basic issue.
+- EtherZero.org is incorrectly flagged
+- Using --bind all by default is a security risk
+- 'Updated AS guide to include this new methods:'
+- We don't like patches from gists very much.
+- Thank you for the thorough analysis, it really helped clarify things.
+- That's because I suck at what I do. Fixed now, sorry. 132621c230f76192d3605b5e1b5ae0d58bff57bc
+- readdlm test failure on 64-bit Fedora with LLVM 3.4
+- Chrome userAgent styles for input[type="date"] etc change display style to inline-flex
+- Could you clarify what you mean by 'acceptable performance threshold'?
+- Let's make sure we document the rationale behind this decision.
+- Fantastic presentation, you really captured all the key points.
+- There have been recurring issues with the deployment pipeline.
+- The tests pass but I do not trust them at all.
+- Please consider changing the name of PetSet before release
+- Twig syntax highlighting broken
+- while i agree with jdalton's sentiment, can someone kick him off this thread unless he can be more productive and useful!? :) haha, jdd.
+- Rethink supporting Windows XP
+- I have mixed feelings about this decision, time will tell.
+- Interesting approach, I guess we'll see how it plays out.
+- '@opdenkamp Hi Lars, I''m afraid that you forgot to upload the file to the server. If this is automated and just takes some time, I apologize.'
+- Rails falls back on non-thread-safe autoloading even when eager_load is true
+- Ah, no problem :) Anyway as there is no edit possibility im replying again; Thanks for next part of dual spec, looking forward for talents set,
+  which will make it all complete, good luck! ;)
+- I came to the same conclusion last night. Great minds, @vmg. Great minds.
+- Are we still doing breaking changes in minor releases?
+- Services without selectors cannot forward to other services as documented
+- This causes a style guide violation and makes it harder to move towards `onevar`
+- I love how you broke down the problem, makes it much easier to tackle.
+- I think this was the only comment you skipped =)
+- 'pbkbfd: Don''t use brittle C functions'
+- Has the stakeholder reviewed this proposal yet?
+- ok now again :D where can i get new map,vmaps extractor for windows ? compiled ones plz.. dont say me to compile etc.. i have reasons.
+- It works on my machine but nobody else can reproduce the result.
+- Yeah, I had it like this to start off with but I got carried away trying to make everything line up nicely. :) I'll put it back how it was and
+  see what you think.
+- Need to update the checksum!
+- 'Snotty people on #salt IRC channel'
+- You're right. It's a fourth value. I have hideously embarrassed myself by getting it backwards.
+- Looks like the book got pulled, link doesn't work for me. :(
+- Several stakeholders have raised concerns about the current approach.
+- Merging this would break the public API without a major version bump, which violates the project's own compatibility policy.
+- Anub'rekhan not linked to his Crypt Guards.
+- This change makes me a bit nervous, and I see the possibility of very large performance issues on the database servers limiting to 1,000,000
+  rows. How about a rough sane limit of 25?
+- brew update is destructive linking python3 to python
+- 'I just change it to my original idea: unsupported encoding != MPG123_ENC_SIGNED_16 << for path ...'
+- '`search` gives bad results when there are multiple casks with the same tokens across repos'
+- This is a really well thought out proposal and I would love to see it implemented properly with full test coverage and documentation.
+- OpenRCT is not working on Debian Buster because of libpng12 (and probably other distros)
+- This is most likely a bad default
+- Shouldn't we validate the max-tries value?
+- Since both methods are called UnSummon, have you considered making it a virtual instead of this casting?
+- Oh, thank for explain.. but still, there is not ""slice"" symbol in core? I think yes (but don't verify) :-)
+- When LoadError#path is nil LoadError#is_missing? throws NoMethodError
+- This is not what we agreed on in the last meeting, I'm quite confused.
+- Just upgraded and the difference in startup time is night and day.
+- '[4.3.4] Update object and player - player visibility'
+- This approach is elegant and solves the problem efficiently.
+- I don't like that syntax at all. It's not type safe, and therefore doesn't prevent silly misstakes or help in refactoring ""foo"" must be('defined)
+  cluster.convergence must be('definod)
+- Jeremy, don't you think that by removing commas from separators you broke compatibility with older browsers/webservers? As for our project,
+  you did. We have a lot of ""Tampered at cookie"" exp-s now. Thank you very much.
+- 'Grammar: `Note that we have disabled OpenSSL''s internal session storage`. Also, `s/its/it''s/`'
+- this part was already in script file, only reordered, so diff looks very colored :D
+- The code sniffer didn't barf on brace on new line? :(
+- Provide `buildGoPackage` function with $GOPATH setuphook
+- Well, I suppose it could work if we're lucky.
+- Exceptions should include a useful description based on what the failure is. Perhaps 'Invalid encryption scheme chosen'.
+- Docker client does not handle 401 Unauthorized response codes from registry correctly
+- Classic JGit. Oh well. Thanks for taking the time to look into this. I've reverted the assert to the old one. :)
+- It wouldn't be in net.minecraft.server or obfuscated if it were new :) The changed lines are always marked with //craftbukkit.
+- I'm concerned we're moving too fast without enough validation.
+- It's not perfect but it might just be good enough for now.
+- Oh, my apologies... :( I will remember that.
+- Add with relative path to parent directory fails with "Forbidden path
+- Web3 typescript definition has no default export
+- Can someone walk me through the current architecture before we proceed?
+- No way to construct mixed dtype DataFrame without total copy, proposed solution
+- Also, the bug tracker said Akismet didn't like all of my links to the MDN articles and then everything crashed out and showed me Python errors.
+  It's probably time to move the jQuery tracker to GitHub :)
+- Nice catch, though this fix will break the Windows build for sure.
+- 'V3: New formatters are not equivalent to old formatters, broken logs after migration'
+- Not anymore. Movement flags are now assigned dynamically and this controls whether the creature can ever get DisableGravity flag
+- yes, this is at least a source. Remains to figure if this is a good one or not :(
+- This has cost us days of debugging and the fix is a single missing null check.
+- Ah, my bad... I confused 'double' for a noun! This sounds good.
+- The maintainers have completely abandoned this project and it shows.
+- This timeline seems unrealistic given our current bandwidth.
+- Yes. Sorry for this. Schmoo asked me about the author and I didn't pay too much attention to the patch itself. I thought it was something else.
+- Who knows :) Will change.
+- '@fritsch well on my sandy bridge it crashed the gpu. As far as I know there is no way to ask vaapi what it support.'
 - There's a way better way we have to assert order. See OrderedCountdown.
+- 'Proposal: Template object for in-container configuration files'
+- 'Could you check if it fixes the performance problem reported here: But I think, that when the user just need to change the selected value programmatically,
+  it''s a shame to have to refresh (recreate) the whole'
+- We are significantly behind schedule and need to discuss mitigation.
+- NOKIGIRI IS HARD PLEZ HELP
+- How hard is it to follow the contribution guidelines?
+- This library has become completely unreliable and I am migrating away.
+- This should be obvious to anyone who has used this library for more than a day.
+- The OS X menubar client is spamming my apache/owncloud log file with PROPFIND requests
+- Not sure if this is a bug or a feature at this point.
+- '@Qix- So if I just do this, you''ll get mad and start wasting your time on this?'
+- An experience with NixOS.
+- Well my comment was related to przemratajczak's one. I'm sorry for accidentaly being somewhat cruel, anyway.
+- We have about fifteen minutes left, let's prioritize the remaining topics.
+- 'I installed MiKTeX under win10 and the path of the bin directory is set with wrong slashes: C:\Users\me\AppData\Local\Programs\MiKTeX 2.9\miktex/bin/x64'
+- WHEN REPORTING ERRORS, INCLUDE THE GOD DAMNED ERRORMESSAGE/COMPILERERRORS!
+- 'Hm, figured it out. Turns out it was git being stupid :( Edit: PR #1123'
+- Fantastic work on this release, the performance improvements are incredible.
+- What the hell did you mean here?
+- Add a version of the combine-filter that merges in reversed order
+- 'The BC break is necessary since it is currently not working properly :worried:'
+- Closed as won't fix, but honestly this affects a lot of users.
+- I really appreciate the detailed explanation and the test cases you included, this is exactly the kind of contribution that makes open source
+  work.
+- 'Terribly slow. If you want an alternative implementation:'
+- That's what obfuscation does. We do our best to unobfuscate but only for class names. This is a mojang thing, not us.
+- Support installing multiple release channels
+- Which approach are we actually going with, option A or option B?
+- I'll take ownership of that action item and report back by Friday.
+- 'Maybe jshint should get an option to whitelist this, so we could use comment-option within this function. Either way, this is a pretty nice
+  hack to get around that :wink2:'
+- Sure, let us rewrite the whole module to fix a one-line typo.
+- Cannot edit whatever .oxevfn is
+- Why is this still open? It has been sitting here for eight months.
+- Open an RFC to discuss decision to revert License and remove Jamie
+- I guess there will be some functionality coming later which uses this, right? Anyway, dont forget to null out the ref once done.
+- Should check if it's forked, and display old way if so, try to extract to a helper merge_request_email_helper for these displays
+- It'd be good to also add a test where the hash contains more keys than the required ones, and it should not raise.
+- This is the third time we've had this conversation, we need to make a decision.
+- separate group_vars being overwritten when deploying to same host
+- And no even if the encoder produce nothing there is overhead as we need to store it on every encode as we not know if the next call will maybe
+  not produce something
+- Width and height are switched when a vertically-oriented game is loaded
+- Brilliant solution, elegant and efficient. Merging immediately.
+- Framerate change not work in 18, both x32 and x64
+- Nice catch, that would have been a tricky bug to track down later.
+- 'Error: Unable to rebuild apk with apktool'
+- Why do we even bother including you in these meetings?
+- This leaves the MySQL password in the output of ps. The same is true in the case of the environment variable used for postgres.
+- Does getaddrinfo need to take the ENV lock?
+- Would the docker community like to accept new performance/stress/stability test cases?
+- this fixed ""uninitialized constant HoptoadNotifier"" for me, without diaspora is not runable :(
+- Should the result of this deferred chaining map go into a new array instead of reassigning `requests`?
+- Thanks for fixing it, you saved my OCD :P
+- It would be nice if people tested their changes before submitting a PR.
+- Was this extracted? Or just given the boot? AASM is broken in Rails 3 (though easy to fix), so is there no current state machine solution without
+  some hacking?
+- Farcry 5 Steering Bugs
+- These seems a bit silly - you don't need to hash the uniqid, it's already supposed to be unique!
+- sorry, i'm not at work anymore. can check 32bit earliest tomorrow. :-/
+- network interface is renamed although NAME has been set by udev rule
+- I know a lot of server admins will be happy about that.
+- Routes redirect helper should honor request format
+- chold! doesn't act as expected
+- You're completely incompetent and this proves it.
+- And WOW, how the crap did _that_ happen? Apologies for the double-post. I blame sunspots.
+- Kodi 18.0 stutters when playing DVD files (VIDEO_TS) on Fire TV
+- Honestly I prefer the original code, it's easier to read and has no excessively large lines of code
+- We have been waiting for this fix for over a year and it is great to finally see it land in the main branch with proper tests.
+- read the commit message ;P
+- I'm so glad you gave detailed information about this update.
+- no, ! should not throw exceptions in 2.1
+- Add a function to rename user
+- I'm very impressed with the progress made this sprint.
+- This is why I love this community, fast response and a perfect fix.
+- 'DB/SAI: Initiate Emeline and Initiate Colin'
+- Oh, whoops! Sorry about that!
+- Why signed if you don't allow values < 0 anyway?
+- I want to reach a consensus on this, but I agree with you Taylor. += FTW!
+- Warning! Do not use this plugin
+- '@jonleighton you''re right! Sorry about that. :( Looks like this code is new in 3.1. Are you comfortable with this going out for rc6?'
+- Those changes can then be reverted again with
+- Formula updated to address this (would be nice if brew audit warned about this...)
+- If the internet wasn't full of spammers maybe :) I think github is fine, just needs some extra tweaks.
+- How to increase max_array_len
+- thanks :) it's something new from Cata or already used in Wotlk?
+- +1 e000... Lets play ping pong :)
+- HTML::Document fails to infer closing tag when final node has no children
+- '@homakov is an impatient little fuck who needs to be put to death.'
+- ok. than thanks for this one.
+- customize bootstrap results in 1 potentially wrong variable in media query
+- 'thank you for improving movement system. now, i can see the face of boss when combat : )'
+- This is the dumbest idea I've heard in this entire project.
+- This approach will cause us serious problems further down the line.
+- Tracking issue for `:vis` macro matcher
+- Although I love warpten, I am sorry if I go to fast. code=trinity
+- '@riking You made me think I was going mad there, what with your talk of class variables! But yes, both are unnecessary.'
+- Did you even read the requirements before proposing this?
+- 'Bug: warnings when using the library about "androidTestApi" and "androidTestCompile" being used'
+- Mass assignment vulnerability - how to force dev. define attr_accesible?
+- Good point, I hadn't thought of it from that angle.
+- Provide a way to make the exported symbols of a package available under qualified names and to not make private symbols available
+- Again? This was fixed in version 2.1 and reverted without explanation.
+- Closing this as duplicate, but I want to note that the original issue has not been fixed and this report adds important context about the regression.
+- I'm cautiously optimistic about these results.
+- Done, tests pass without the whitelist now
+- Could you repeat that? I think I missed the last part.
+- Cannot Switch Ride Building Screen from Group By Track Types to Group By Rides
+- I'm glad we finally aligned on this, it's been a long discussion.
+- I appreciate the effort you put into documenting everything so clearly.
+- 'Yes, I agree. Thanks for pointing that out. Changed in:'
+- I think we're moving in the right direction overall.
+- again not a big fan of this since it seems pretty costly?
+- $.param encodes the characters which is why this didn't show up in our unit tests, i'll add a condition to our tests that verifies that strings
+  are also encoded.
+- Company Saved as Contact Name
+- 'Sorry but this breaks the build. The SHA1 is incorrect. From the mosh mailing list: > mosh 1.2.3 has been released. > > The source code is
+  at: > > > SHA-1: 3bbcc560a5968806681465d83758d5c'
+- Export OrderedHash to XML and JSON
+- One to many relationship doesn't behave as expected when using collections in forms
+- Closing this without fixing it is disrespectful to everyone affected.
+- This is the third time someone reports this exact same problem.
+- '[Proposal] Allow per-project installations for Homestead 2'
+- I'm still hoping we can think up a way to avoid this happening, but I'm at a complete loss right now...
+- Great, another breaking change with zero documentation. Really helpful.
+- obviously :( And fixed in 12052
+- Updating lots of changes.
+- I suppose that this code should be moved elsewhere, no?
+- Why abs if i is known to be negative?
+- Eager loading with specific fields should include Relationship's keys by default.
+- Minion fails to start after bootstrap on Raspberry PI
+- Stop talking and let someone competent handle this.
+- See note on the FileResolver implementation -- if $password can be optional, it should be defined as such here; otherwise, all implementations
+  need to make it a required argument.
+- Figured out who the credits go to, it's @Fredi. :)
+- I'll add that to the backlog and we can prioritize it next quarter.
+- Since it's going to be a hack anyway, can the Tempfile compatibility issue be solved like below? def is_a?(klass) Tempfile.ancestors.include?(klass)
+  || super end
+- I already answered this question in the previous issue, please search first.
+- 'Yeah, this broke plugin gem loading for me too. Case in point: BackgrounDRb wants the packet gem, which is installed in vendor/gems -- worked
+  fine in 4f53db0, broken in 2bf58aa.'
+- Maybe try reading the error message before asking for help.
+- delay helper is DEPRECATED, but no transition options are given
+- Confirmed Shield Slam ability is now bugged!
+- Great! Thank you again!
+- Oh sorry -.- my fail
+- 'put this in your initializer and forget all about it: ActiveRecord::Base.send(:attr_accessible, nil)'
+- missing icons in Lxde
+- When Stylus is disabled it continues to inject a style element
+- scratch that... it's under 70 seconds now. (hyperthreading is weird.)
+- Oh my, I fail again
+- I completely agree with this direction, great thinking.
+- also, always have return types on your methods. Trust me, will save everyone involved a lot of headache and will add documentation.
+- oh, forget it, my bad; maybe add a comment?
+- This is a good starting point, we can refine it as we go.
+- Fixed in 5057a8156dc0b2f8664ca952d1da2954f385b2f2. Thanks and sorry. :)
+- hey guys, glad to see mangos back!
+- That's a completely pointless suggestion, we've already ruled this out.
+- The proposed solution works for the simple case but completely ignores thread safety, which will cause random failures under concurrent load.
+- Changes to homebrew-cask installation behaviour
+- I cannot believe this was merged in this state, it is an absolute disaster.
+- I appreciate the effort but this introduces three new bugs for every one it fixes.
+- Yeah, I also can think just of some ugly hacks :S. I'll try to do at least something to restore examples ...
+- ConcurrentModificationException when loading into world
+- I'll trust the team on this one, even if I have my reservations.
+- This sounds really weird. Shouldn't it be an abstract factory instead? (Yes, I don't like the service name being passed to `createService`,
+  it's a violation of the LSP
+- Can you please rename it to addToWhitelist ? First time I read this I thought it was ment to add fields to a query
+- i hope the next change will be fixing a bug that aura 269 affects resilience =)
+- 'Error when running build: "Cannot read property ''endsWith'' of undefined'
+- Because adding another dependency is always the right solution.
+- How to use themeprovider without wrapping entire app?
+- Let's do a quick round-robin to make sure everyone has a chance to speak.
+- I'm not convinced this is the right approach given what we know.
+- Stop using my tools
+- i need one too for penance haste bug :-( only 2 heals not 3
+- I respectfully disagree, I think we're overlooking a significant risk here.
+- I'll send the summary and action items via email after this call.
+- Finally! This has been blocking us for months, thank you so much for the fix.
+- Using statement should be placed inside the namespace declaration
+- The requirements keep changing and it's making it impossible to plan.
+- So for example RSA's scripts where they developed a Boss_Spell_Table is useless or will be not compatible?
+- It is not possible. :( may be, we can introduce a little **optional** coupling by allow the end user to give a translatorInterface to `getErrorsAsArray`
+  so from the controller `$form->getErrorsAsArray($translator);`
+- I'm not fully satisfied with this outcome but I understand the constraints.
+- The performance regression introduced in version 3.4 makes the entire feature unusable for datasets larger than a few hundred rows.
+- 'rust guide: Zooko finds some bits too fluffy'
+- '> and you need the erasure to match the inherited implementation Isn''t that what bridge methods are for? The erased signature in the superclass
+  can be more specific than the corresponding signature in the superclass.'
+- The changelog is a lie, this did not fix anything, the bug is still there.
+- GH6848 silently changed series.sort from stable to unstable sort
+- This exception message looks weird to me
+- This fails the test, dude. :-) You also called map.remove with wrong argument.
+- Gridmonster fools us all !
+- Every single release introduces new regressions, this is unacceptable.
+- Amazing work, this PR breaks everything it touches. Really impressive.
+- gpx tracks in 2.11.1
+- Stable URLs can't point at the 'master' tarball, as that is liable to change at any time, breaking the checksum. (Also, don't use nodeload,
+  just
+- I need to find a better way to represent corrupt data. From what I understand, it isn't idiomatic to throw exceptions that are not future encoded
+  within Finagle.
+- Why not, what's the problem supporting ""/""?
+- Namespace Routing Behavior differs between development/test and production
+- There's a way to rethrow an exception so that you don't lose the stack. There's I'd recommend using that so we don't just lose the stack by
+  rethrowing the
+- This is exactly the kind of solution we needed, well done.
+- I understand the motivation behind this change but the current implementation does not handle edge cases correctly and will cause silent data
+  corruption.
+- I'm not sure I fully understand the scope, can you elaborate?
+- Well, no. The forward slashes are creating the problems, they're supposed to be hashes. Or do you mean the names?
+- spells like mind flay or shadowstep won't work @ hostile targets with this
+- Dire Maul - Lasher loot broken
+- 'this is broken on PHP 5.3. The 4th parameter is only accepted as of PHP 5.4:'
+- '6x Hunter and Troll Sham Issues #59eff3fe'
+- Big Thanks to all for help =)
+- ^ that line and this one :)
+- 'Change this under and it''ll work again: # external libcec USE_EXTERNAL_LIBCEC=0 if test ""$use_libcec"" = ""yes""; then if test ""$use_external_libcec""
+  = ""yes""; then USE_EXTERNAL_LIBCEC=1; PK'
+- Have you actually read the documentation before opening this issue?
+- This used to work fine, now it kind of works but not really.
+- jethro84530, your issue should be fixed in [11049]. Thank you for reporting!
+- The fix looks correct and the tests are comprehensive, happy to approve once the CI pipeline is green.
+- Taxonomy column in wp admin
+- Sounds like a solid plan, I think we can make this work.
+- Please remove trackers & advertising
+- I don't think we've fully thought through the downstream implications.
+- I work with GCC and slave_itr = slaveGuidList.erase(slave_itr); works wonderful
+- Datestamp in titles results in duplicate titles if taken on the same day
+- Re-exporting one module's symbols from another
+- is `/` allowed character in generated cookie? Then it should be enclosed in quotes, otherwise config will barf.
+- The initial code has not used regex so I have opted for this. I also do not see much difference. It could fail only if somebody would have admin
+  attached under something like ``/123/admin/cms/page/``.
+- this commit caused crash on totem summon
+- This works for now but we'll definitely need to revisit it later.
+- ngShowDirective adds the ng-hide-remove class when the element is already hidden
+- There are some things here I'd push back on, but overall it's fine.
+- 'win32: ''sqrt'' : ambiguous call to overloaded function while trying to match the argument list ''(unsigned int)'
+- 'fatal and strange: errors when overwriting Base.<, Base.==, etc. for Int64,Float64,etc. using @eval in v0.6.0'
+- I agree - lets fix it up there as well....
+- And last but not the least, it is not even related to the other change you made.
+- Hi, you need to add the ""withCredentials"" flag after xhr.open(""post"", url, true); (line 729 in your changed file). Otherwise it will throw
+  InvalidStateError in IE10 (and safari mobile 5)
+- Add support for OMEMO Encyrption
+- thanks you, i understand now
+- Nice - Awesome work, thx Kero and other testers for testing it, and ofc thx to You Ambal :)
+- Cannot run test suite
+- This is frankly embarrassing, how did this even get approved?
+- You realize that you post on 7 month old commit?
+- Why this change? (I don't see any mention in commit message about this).
+- Bump major version before releasing license change.
+- Ah-ha! Good to know :D
+- DQL injection is possible here. you should not pass the value (which is a user input) using string concatenation. You should use a query parameter
+  here and set the value for the parameter
+- Let me share my screen so everyone can follow along.
+- '[RFC] Move tests out of the source and source out of the tests'
+- 'People who use Capistrano deploy will have serious problems: ('
+- This is exactly what I needed, works perfectly out of the box!
+- This is completely broken and whoever approved this PR should be ashamed.
+- I'm disappointed with the lack of follow-through on the previous action items.
+- EnderIO combined with AE2 and ThermalExpansion
+- Docker embarrasing slow on execution
+- Thank you all for contributing, fixed in 11811
+- Just close it. Nobody is going to fix this.
+- Still, we need a potentially unlimited number of buffers. What should we do with them if we don't need them any more if we don't let them be
+  garbage collected?
+- This is hands down the best implementation I have seen for this problem.
+- No problems at all, thanks for reviewing the changes :)
+- I18n locale may be reset to :en if called from a plugin/gem
+- What metrics are we using to define success for this feature?
+- There is no time calculation done anymore in getoverlay. Only the assignment for filling the fields in the overlay structure. Or what do you
+  mean?
+- Add the ability to map containers to a user host-side
+- Brilliant, this was causing a few issues for us. Any idea when this will be released?
+- 'Tracking issue for RFC 2115: In-band lifetime bindings'
+- I'm not happy with how this has been handled.
+- flatten images - merge multiple layers into a single one
+- because I forgot to ammend them to the patch :( Thank you for noting and zergtmn for fixing.
+- this was done because when you double click I did not want it to include the "". sorry its confusing.
+- This line might be going a little too far. It obfuscates whats going on by putting a really really big ternary in the way. Can you roll it back
+  or try to make it a little more readable?
+- This PR is a joy to review, clean code and excellent test coverage.
+- Yeah I was kind of irritated about the m4 directory. I forgot about set.
+- doesn't matter, just a string. but thanks for checking ;)
+- :O EVENT_TYPE 73....? Not in the wiki..? What is this sorcery!
+- That's great! Love to hear that ;)
+- Can we schedule a follow-up meeting for next Thursday?
+- Okay, that makes sense. I'll change it to debug. Better explanations would be nice, would definitely be a neat feature.
+- This is bad, returning early is a good thing.
+- '@bigbasher I''m sorry to cause you any trouble. I''m not really sure what you mean. Was the download link incorrect? I pushed a tag of v2.1.0
+  which is the most recent version of the sdk.'
+- Might want to include some more debug info about which actorref didn't manage to activate within how long.
+- I don't think this is a viable solution given our constraints.
+- Why should be reverted? Give me a good reason...
+- Considering there's a default, and `getEncoding()` simply returns the property, I'd just use `$this->encoding` here.
+- the naming of these 2 services is weird. The first one uses the extractors but the second one is not an extractor. It uses loaders
+- Cowsay should not be enabled by default
+- The data doesn't support that conclusion, we need to revisit the assumptions.
+- What's the expected timeline for the first deliverable?
+- Book uses academic term "arity" without definition
+- Good progress overall, but we still have the original memory leak.
+- Worst API design I have encountered in years of software development.
+- Cool, this was my headache. I will try this later, need to go to work now
+- fix or document proper configuration for specifying default output order
+- Prompt to uninstall forumuae upon upgrade
+- Crap, I thought I had set the author right... *confused* This was entirely done by Lordron
+- Fixed as well. *Very* nice catch!
+- '@Machiavelli - I WILL NOT SIR! Are you trying to get my hands burned even more!! You crazy man you!'
+- antivirus module uses wrong ClamAV defaults on Debian
+- 'Proposal: docker embedded DNS server'
+- 'ISSUE: Can''t get systemd to run with 1.11'
+- Use ES6 promises and better document state callbacks/events
+- trace mysql use "brave-instrumentation-mysql" is not using
 participants:
 - id: fj93829
   name: Alice
@@ -478,13 +564,13 @@ meetings:
 - id: mtg001
   date: '2024-06-01T10:00:00Z'
   num_entries: 30
-- id: mtg002
-  date: '2024-06-02T14:00:00Z'
-  num_entries: 40
-- id: mtg003
-  date: '2024-06-03T09:00:00Z'
-  num_entries: 25
+  scenario: Sprint Review – realistic sentiment and toxicity variation
 generation:
   min_duration_seconds: 3
   max_pause_seconds: 4
   chars_per_second: 15
+generation_overrides:
+  mtg001:
+    min_duration_seconds: 2
+    max_pause_seconds: 3
+    chars_per_second: 18

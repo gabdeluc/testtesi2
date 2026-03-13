@@ -115,7 +115,6 @@ function App() {
       messageStream: true, participantRoster: true
     }
   })
-
   const [meetingList, setMeetingList]         = useState([])
   const [selectedMeeting, setSelectedMeeting] = useState('mtg001')
 
@@ -188,7 +187,7 @@ function App() {
       setPlaybackIndex(next)
       // Allinea il wall-clock al timestamp reale del messaggio appena arrivato
       if (transcript[next - 1]) {
-        wallRef.current = tsToSec(transcript[next - 1].created_at)
+        wallRef.current = tsToSec(transcript[next - 1].created_at) - tsToSec(transcript[0].created_at)
       }
       scheduleNext(next, transcript, spd)
     }, delay)
@@ -245,7 +244,9 @@ function App() {
   // ── Vista parziale ────────────────────────────────────────────────
   const liveTranscript = allTranscript.slice(0, playbackIndex)
   const total          = allTranscript.length
-  const totalSec       = total > 0 ? tsToSec(allTranscript[total - 1].created_at) : 0
+  // totalSec = durata totale in secondi (delta tra primo e ultimo messaggio)
+  const baseTs   = total > 0 ? tsToSec(allTranscript[0].created_at) : 0
+  const totalSec = total > 0 ? tsToSec(allTranscript[total - 1].created_at) - baseTs : 0
   // Progresso basato sul wall-clock → barra scorre fluidamente
   const progressPct    = totalSec > 0 ? Math.min((wallSec / totalSec) * 100, 100) : 0
   const isFinished     = playbackIndex >= total && total > 0
