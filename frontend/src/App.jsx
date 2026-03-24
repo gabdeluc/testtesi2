@@ -22,7 +22,7 @@ ChartJS.register(
 const API_URL = 'http://localhost:8000'
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🆕 BREAKPOINTS & RESPONSIVE HOOK
+// BREAKPOINTS & RESPONSIVE HOOK
 // ═══════════════════════════════════════════════════════════════════════════
 
 const BREAKPOINTS = {
@@ -50,11 +50,11 @@ function useMediaQuery(query) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PARTICIPANT_COLORS = [
-  '#00C7BE',   // Alice  — teal
-  '#BF5AF2',   // Bob    — viola
-  '#FF9F0A',   // Charlie — arancione
-  '#30D158',   // 4° speaker
-  '#FF375F',   // 5° speaker
+  '#00C7BE',
+  '#BF5AF2',
+  '#FF9F0A',
+  '#30D158',
+  '#FF375F',
 ]
 
 const resolveColor = (cfg, participants) => {
@@ -77,7 +77,7 @@ const secToLabel = (sec) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🆕 TOAST NOTIFICATION SYSTEM
+// TOAST NOTIFICATION SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════
 
 const Toast = ({ message, type, onClose }) => {
@@ -157,7 +157,7 @@ function App() {
     timelineToxicity:  { participantFilter: null, color: '#FF6B6B', showGrid: true, showArea: true, metric: 'toxicity' },
     messageStream:     { participantFilter: null, color: '#FF2D55', limit: 30, showTimestamps: true },
     participantRoster: { participantFilter: null, color: '#BF5AF2' },
-    healthScore:       { participantFilter: null, color: '#34C759' }  // 🆕 Health Score widget
+    healthScore:       { participantFilter: null, color: '#34C759' }
   })
 
   const [visibleWidgets, setVisibleWidgets] = useState(() => {
@@ -176,14 +176,19 @@ function App() {
   const [selectedMeeting, setSelectedMeeting] = useState('mtg001')
   const [openSettings, setOpenSettings]       = useState(null)
   const [showWidgetPanel, setShowWidgetPanel] = useState(false)
-  const [sidebarOpen, setSidebarOpen]         = useState(!isMobile)  // 🆕 Closed by default on mobile
-  const [activeView, setActiveView]           = useState('overview')
 
-  // 🆕 Filters
-  const [sentimentFilter, setSentimentFilter] = useState('all')  // all|positive|neutral|negative
-  const [toxicityFilter, setToxicityFilter]   = useState('all')  // all|safe|toxic
+  // FIX: sidebarOpen initializzato leggendo window.innerWidth direttamente,
+  // non tramite isMobile che parte sempre false (la media query non ha ancora
+  // sparato al primo render).
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.innerWidth > BREAKPOINTS.mobile
+      : true
+  )
 
-  // 🆕 Toast notifications
+  const [activeView, setActiveView] = useState('overview')
+  const [sentimentFilter, setSentimentFilter] = useState('all')
+  const [toxicityFilter, setToxicityFilter]   = useState('all')
   const [toasts, setToasts] = useState([])
 
   const showToast = useCallback((message, type = 'info') => {
@@ -203,16 +208,39 @@ function App() {
       .catch(() => {})
   }, [])
 
+  // ── Playback engine ─────────────────────────────────────────────
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+  }, [])
+
+  const stopClock = useCallback(() => {
+    if (clockRef.current) { clearInterval(clockRef.current); clockRef.current = null }
+  }, [])
+
+  // FIX: stopTimer e stopClock ora sono definiti prima dell'useEffect di caricamento,
+  // eliminando il workaround "typeof stopTimer === 'function'".
+  // I useCallback non cambiano mai riferimento (deps vuoti), quindi è sicuro
+  // includerli nelle dipendenze degli effect che li usano.
+  const stopTimerRef = useRef(stopTimer)
+  const stopClockRef = useRef(stopClock)
+  useEffect(() => { stopTimerRef.current = stopTimer }, [stopTimer])
+  useEffect(() => { stopClockRef.current = stopClock }, [stopClock])
+
   // ── Load data ───────────────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       setError(null)
-      
-      if (typeof stopTimer === 'function') { stopTimer(); stopClock() }
-      indexRef.current = 0; wallRef.current = 0
-      setPlaybackIndex(0); setWallSec(0); setIsPlaying(false)
-      
+
+      // Ferma il playback in corso prima di caricare un nuovo meeting
+      stopTimerRef.current()
+      stopClockRef.current()
+      indexRef.current = 0
+      wallRef.current  = 0
+      setPlaybackIndex(0)
+      setWallSec(0)
+      setIsPlaying(false)
+
       try {
         const [rP, rM] = await Promise.all([
           fetch(`${API_URL}/participants`),
@@ -234,7 +262,7 @@ function App() {
       }
     }
     load()
-  }, [selectedMeeting, showToast]) // eslint-disable-line
+  }, [selectedMeeting, showToast])
 
   useEffect(() => {
     try { 
@@ -242,21 +270,9 @@ function App() {
     } catch {}
   }, [visibleWidgets])
 
-  // 🆕 Auto-close sidebar on mobile when view changes
   useEffect(() => {
-    if (isMobile) {
-      setSidebarOpen(false)
-    }
+    if (isMobile) setSidebarOpen(false)
   }, [activeView, isMobile])
-
-  // ── Playback engine ─────────────────────────────────────────────
-  const stopTimer = useCallback(() => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
-  }, [])
-
-  const stopClock = useCallback(() => {
-    if (clockRef.current) { clearInterval(clockRef.current); clockRef.current = null }
-  }, [])
 
   const scheduleNext = useCallback((idx, transcript, spd) => {
     if (idx >= transcript.length) { setIsPlaying(false); return }
@@ -324,101 +340,73 @@ function App() {
     showToast(`Speed: ${s}×`, 'info')
   }
 
-  // 🆕 Keyboard Shortcuts
+  // ── Keyboard Shortcuts ─────────────────────────────────────────
   useEffect(() => {
     const handleKeyPress = (e) => {
-      // Ignore if typing in input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
         return
       }
-
-      // Space: Play/Pause
-      if (e.code === 'Space') {
-        e.preventDefault()
-        handlePlayPause()
-      }
-
-      // Ctrl + Arrow Right: Speed up
+      if (e.code === 'Space') { e.preventDefault(); handlePlayPause() }
       if (e.code === 'ArrowRight' && e.ctrlKey) {
         e.preventDefault()
         const currentIdx = SPEEDS.indexOf(speed)
-        if (currentIdx < SPEEDS.length - 1) {
-          handleSpeedChange(SPEEDS[currentIdx + 1])
-        }
+        if (currentIdx < SPEEDS.length - 1) handleSpeedChange(SPEEDS[currentIdx + 1])
       }
-
-      // Ctrl + Arrow Left: Speed down
       if (e.code === 'ArrowLeft' && e.ctrlKey) {
         e.preventDefault()
         const currentIdx = SPEEDS.indexOf(speed)
-        if (currentIdx > 0) {
-          handleSpeedChange(SPEEDS[currentIdx - 1])
-        }
+        if (currentIdx > 0) handleSpeedChange(SPEEDS[currentIdx - 1])
       }
-
-      // Ctrl + R: Restart
-      if (e.code === 'KeyR' && e.ctrlKey) {
-        e.preventDefault()
-        handleReset()
-      }
-
-      // Ctrl + C: Customize panel
-      if (e.code === 'KeyC' && e.ctrlKey) {
-        e.preventDefault()
-        setShowWidgetPanel(p => !p)
-      }
-
-      // 1-5: Switch views
+      if (e.code === 'KeyR' && e.ctrlKey) { e.preventDefault(); handleReset() }
+      if (e.code === 'KeyC' && e.ctrlKey) { e.preventDefault(); setShowWidgetPanel(p => !p) }
       if (e.code >= 'Digit1' && e.code <= 'Digit5') {
         const viewIdx = parseInt(e.code.replace('Digit', '')) - 1
-        if (viewIdx < NAV_ITEMS.length) {
-          setActiveView(NAV_ITEMS[viewIdx].id)
-        }
+        if (viewIdx < NAV_ITEMS.length) setActiveView(NAV_ITEMS[viewIdx].id)
       }
     }
-
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [speed, isPlaying]) // eslint-disable-line
 
-  // 🆕 Export Functions
-  const exportJSON = useCallback(() => {
+  // ── Export Functions ───────────────────────────────────────────
+  // FIX: rimosso useCallback con deps incomplete che catturavano una versione
+  // stale di liveTranscript (sempre [] al momento della memoizzazione iniziale).
+  // Essendo funzioni chiamate solo da onClick sullo stesso componente, non
+  // beneficiano di memoizzazione — le arrow function normali sono corrette.
+
+  const exportJSON = () => {
     const data = {
-      meeting_id: selectedMeeting,
+      meeting_id:  selectedMeeting,
       exported_at: new Date().toISOString(),
-      transcript: liveTranscript,
-      statistics: calcStats(liveTranscript),
+      transcript:  liveTranscript,
+      statistics:  calcStats(liveTranscript),
       participants: getParticipantStats()
     }
-    
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
     a.download = `meeting_${selectedMeeting}_${new Date().toISOString().split('T')[0]}.json`
     a.click()
     URL.revokeObjectURL(url)
-    
     showToast('JSON exported successfully!', 'success')
-  }, [selectedMeeting, showToast]) // liveTranscript added in dependency later
+  }
 
-  const exportCSV = useCallback(() => {
+  const exportCSV = () => {
     const headers = 'Turn,Participant,Text,Sentiment,Score,Polarity,Toxic,Severity,Timestamp\n'
-    const rows = liveTranscript.map(m => 
+    const rows = liveTranscript.map(m =>
       `${m.conversation_turn},"${m.participant_name}","${m.transcribed_text.replace(/"/g, '""')}",${m.sentiment.label},${m.sentiment.score},${m.sentiment.polarity},${m.toxicity.is_toxic},${m.toxicity.severity},${m.created_at}`
     ).join('\n')
-    
-    const csv = headers + rows
+    const csv  = headers + rows
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
     a.download = `meeting_${selectedMeeting}_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    
     showToast('CSV exported successfully!', 'success')
-  }, [selectedMeeting, showToast]) // liveTranscript added later
+  }
 
   // ── Vista parziale ──────────────────────────────────────────────
   const liveTranscript = allTranscript.slice(0, playbackIndex)
@@ -441,7 +429,6 @@ function App() {
     return p ? liveTranscript.filter(e => e.participant_name === p.name) : liveTranscript
   }
 
-  // 🆕 Apply sentiment/toxicity filters
   const applyFilters = (transcript) => {
     return transcript.filter(m => {
       if (sentimentFilter !== 'all' && m.sentiment.label !== sentimentFilter) return false
@@ -485,25 +472,15 @@ function App() {
       return { ...p, stats: calcStats(msgs) }
     })
 
-  // 🆕 Meeting Health Score
   const calculateHealthScore = (stats) => {
     if (stats.total_messages === 0) return 0
-    
-    const avgPolarity = stats.sentiment.average_polarity || 0
-    const toxicRatio = stats.toxicity.toxic_ratio || 0
-    
-    // Polarity: [-1,+1] → [0,100]
-    const polarityScore = ((avgPolarity + 1) / 2) * 100
-    
-    // Toxicity penalty
+    const avgPolarity    = stats.sentiment.average_polarity || 0
+    const toxicRatio     = stats.toxicity.toxic_ratio || 0
+    const polarityScore  = ((avgPolarity + 1) / 2) * 100
     const toxicityPenalty = toxicRatio * 100
-    
-    // Weighted combination (70% sentiment, 30% toxicity)
-    const healthScore = Math.max(0, Math.min(100,
+    return Math.round(Math.max(0, Math.min(100,
       polarityScore * 0.7 + (100 - toxicityPenalty) * 0.3
-    ))
-    
-    return Math.round(healthScore)
+    )))
   }
 
   // ── Widget sections ─────────────────────────────────────────────
@@ -513,10 +490,10 @@ function App() {
         desc: 'Per-participant sentiment breakdown and weighted polarity [−1,+1].' }
     ]},
     { title: 'Key Metrics', items: [
-      { id: 'messages',  name: 'Messages',          desc: 'Running count of messages seen so far.' },
-      { id: 'sentiment', name: 'Sentiment Overview', desc: 'Weighted polarity on bipolar scale [−1,+1].' },
-      { id: 'toxicity',  name: 'Toxic Messages',    desc: 'Count and % of toxic messages detected.' },
-      { id: 'healthScore', name: 'Health Score', desc: '🆕 Overall meeting health (0-100) based on sentiment + toxicity.' }
+      { id: 'messages',  name: 'Messages',           desc: 'Running count of messages seen so far.' },
+      { id: 'sentiment', name: 'Sentiment Overview',  desc: 'Weighted polarity on bipolar scale [−1,+1].' },
+      { id: 'toxicity',  name: 'Toxic Messages',      desc: 'Count and % of toxic messages detected.' },
+      { id: 'healthScore', name: 'Health Score',      desc: 'Overall meeting health (0-100) based on sentiment + toxicity.' }
     ]},
     { title: 'Analytics', items: [
       { id: 'sentimentDist',     name: 'Sentiment Distribution', desc: 'Stacked bar of positive/neutral/negative proportion.' },
@@ -534,37 +511,18 @@ function App() {
   return (
     <div style={S.app}>
       {/* Toast Notifications */}
-      <div style={{
-        position: 'fixed',
-        top: 80,
-        right: 20,
-        zIndex: 999,
-        pointerEvents: 'none'
-      }}>
+      <div style={{ position: 'fixed', top: 80, right: 20, zIndex: 999, pointerEvents: 'none' }}>
         {toasts.map(t => (
-          <Toast
-            key={t.id}
-            message={t.message}
-            type={t.type}
-            onClose={() => removeToast(t.id)}
-          />
+          <Toast key={t.id} message={t.message} type={t.type} onClose={() => removeToast(t.id)} />
         ))}
       </div>
 
-      {/* 🆕 Keyboard Shortcuts Help (bottom right) */}
+      {/* Keyboard Shortcuts Help */}
       {!isMobile && (
         <div style={{
-          position: 'fixed',
-          bottom: 16,
-          right: 16,
-          fontSize: 10,
-          color: '#636366',
-          backgroundColor: 'rgba(28,28,30,0.95)',
-          padding: '8px 12px',
-          borderRadius: 8,
-          border: '0.5px solid rgba(255,255,255,0.1)',
-          maxWidth: 300,
-          lineHeight: 1.4
+          position: 'fixed', bottom: 16, right: 16, fontSize: 10, color: '#636366',
+          backgroundColor: 'rgba(28,28,30,0.95)', padding: '8px 12px', borderRadius: 8,
+          border: '0.5px solid rgba(255,255,255,0.1)', maxWidth: 300, lineHeight: 1.4
         }}>
           <strong style={{ color: '#8e8e93' }}>Shortcuts:</strong> Space=Play/Pause · Ctrl+→/←=Speed · Ctrl+R=Restart · Ctrl+C=Customize · 1-5=Views
         </div>
@@ -579,33 +537,23 @@ function App() {
         transform: isMobile && !sidebarOpen ? 'translateX(-100%)' : 'translateX(0)',
         transition: 'transform 0.3s ease, width 0.25s ease'
       }}>
-        <button
-          onClick={() => setSidebarOpen(o => !o)}
-          style={S.sbToggle}
-          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-        >
+        <button onClick={() => setSidebarOpen(o => !o)} style={S.sbToggle}
+          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
           {sidebarOpen ? '←' : '☰'}
         </button>
-
         <div style={S.sbDivider} />
-
         {NAV_ITEMS.map(item => {
           const isActive = activeView === item.id
           return (
-            <button
-              key={item.id}
-              onClick={() => {
-                setActiveView(item.id)
-                if (isMobile) setSidebarOpen(false)  // 🆕 Auto-close on mobile
-              }}
+            <button key={item.id}
+              onClick={() => { setActiveView(item.id); if (isMobile) setSidebarOpen(false) }}
               style={{
                 ...S.sbItem,
                 backgroundColor: isActive ? 'rgba(0,122,255,0.15)' : 'transparent',
                 borderLeft: isActive ? '2px solid #007AFF' : '2px solid transparent',
                 color: isActive ? '#fff' : '#8e8e93',
               }}
-              title={!sidebarOpen ? item.label : undefined}
-            >
+              title={!sidebarOpen ? item.label : undefined}>
               <span style={{ ...S.sbIcon, color: isActive ? '#007AFF' : '#636366' }}>{item.icon}</span>
               {sidebarOpen && (
                 <span style={{ ...S.sbLabel, color: isActive ? '#fff' : '#8e8e93' }}>{item.label}</span>
@@ -613,11 +561,8 @@ function App() {
             </button>
           )
         })}
-
         <div style={{ flex:1 }} />
-        {sidebarOpen && (
-          <div style={S.sbFooter}>Meeting<br/>Intelligence</div>
-        )}
+        {sidebarOpen && <div style={S.sbFooter}>Meeting<br/>Intelligence</div>}
       </nav>
 
       {/* ══ MAIN CONTENT ═══════════════════════════════════════════ */}
@@ -631,7 +576,6 @@ function App() {
           alignItems: isMobile ? 'stretch' : 'center',
           gap: isMobile ? 12 : 10
         }}>
-          {/* Logo */}
           <div style={S.hLeft}>
             <div style={S.logo}>MI</div>
             <div>
@@ -640,13 +584,8 @@ function App() {
             </div>
           </div>
 
-          {/* Meeting selector */}
           {meetingList.length > 0 && (
-            <select
-              value={selectedMeeting}
-              onChange={e => setSelectedMeeting(e.target.value)}
-              style={S.meetingSelect}
-            >
+            <select value={selectedMeeting} onChange={e => setSelectedMeeting(e.target.value)} style={S.meetingSelect}>
               {meetingList.map(m => (
                 <option key={m.id} value={m.id}>
                   {m.id.toUpperCase()} · {new Date(m.date).toLocaleDateString('it-IT', { day:'2-digit', month:'short' })}
@@ -655,26 +594,18 @@ function App() {
             </select>
           )}
 
-          {/* Controls */}
           <div style={{
             ...S.hRight,
             flexDirection: isMobile ? 'column' : 'row',
             width: isMobile ? '100%' : 'auto'
           }}>
             <button onClick={handleReset} style={S.ctrlBtn} title="Restart">⏮</button>
-            <button
-              onClick={handlePlayPause}
-              style={{ ...S.ctrlBtn, backgroundColor: isPlaying ? '#FF9500' : '#34C759', minWidth: 76 }}
-            >
+            <button onClick={handlePlayPause}
+              style={{ ...S.ctrlBtn, backgroundColor: isPlaying ? '#FF9500' : '#34C759', minWidth: 76 }}>
               {isPlaying ? '⏸ Pause' : isFinished ? '↺ Replay' : '▶ Play'}
             </button>
 
-            {/* Speed */}
-            <div style={{
-              ...S.speedGroup,
-              flexWrap: isMobile ? 'wrap' : 'nowrap',
-              justifyContent: 'center'
-            }}>
+            <div style={{ ...S.speedGroup, flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: 'center' }}>
               {SPEEDS.map(s => (
                 <button key={s} onClick={() => handleSpeedChange(s)}
                   style={{ ...S.speedBtn, ...(speed === s ? S.speedActive : {}) }}>
@@ -683,95 +614,41 @@ function App() {
               ))}
             </div>
 
-            {/* Timestamp */}
-            <div style={{
-              ...S.tsBlock,
-              fontSize: isMobile ? 16 : 14,
-              justifyContent: isMobile ? 'center' : 'flex-start'
-            }}>
+            <div style={{ ...S.tsBlock, fontSize: isMobile ? 16 : 14, justifyContent: isMobile ? 'center' : 'flex-start' }}>
               <span style={S.tsCurr}>{currentTs}</span>
               <span style={{ color: '#636366', fontSize: 12 }}> / </span>
               <span style={S.tsTotal}>{totalTs}</span>
             </div>
 
-            {/* 🆕 Export buttons */}
-            <button onClick={exportJSON} style={S.ctrlBtn} title="Export JSON">
-              📥 JSON
-            </button>
-            <button onClick={exportCSV} style={S.ctrlBtn} title="Export CSV">
-              📊 CSV
-            </button>
-
-            {/* Customize */}
+            <button onClick={exportJSON} style={S.ctrlBtn} title="Export JSON">📥 JSON</button>
+            <button onClick={exportCSV}  style={S.ctrlBtn} title="Export CSV">📊 CSV</button>
             <button onClick={() => setShowWidgetPanel(v => !v)} style={S.custBtn}>
               ⚙️ {!isMobile && <span style={{ marginLeft: 4 }}>Customize</span>}
             </button>
           </div>
         </div>
 
-        {/* 🆕 Filters Row */}
-        <div style={{
-          maxWidth: 1400,
-          margin: '0 auto',
-          padding: '8px 20px',
-          display: 'flex',
-          gap: 10,
-          flexWrap: 'wrap',
-          alignItems: 'center'
-        }}>
+        {/* Filters Row */}
+        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '8px 20px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#8e8e93', fontWeight: 600 }}>FILTERS:</span>
-          
-          <select
-            value={sentimentFilter}
-            onChange={e => {
-              setSentimentFilter(e.target.value)
-              showToast(`Filter: ${e.target.value === 'all' ? 'All Sentiment' : e.target.value}`, 'info')
-            }}
-            style={{
-              ...S.meetingSelect,
-              fontSize: 12,
-              padding: '4px 8px',
-              minWidth: 120
-            }}
-          >
+          <select value={sentimentFilter}
+            onChange={e => { setSentimentFilter(e.target.value); showToast(`Filter: ${e.target.value === 'all' ? 'All Sentiment' : e.target.value}`, 'info') }}
+            style={{ ...S.meetingSelect, fontSize: 12, padding: '4px 8px', minWidth: 120 }}>
             <option value="all">All Sentiment</option>
             <option value="positive">✅ Positive Only</option>
             <option value="neutral">➖ Neutral Only</option>
             <option value="negative">❌ Negative Only</option>
           </select>
-
-          <select
-            value={toxicityFilter}
-            onChange={e => {
-              setToxicityFilter(e.target.value)
-              showToast(`Filter: ${e.target.value === 'all' ? 'All Messages' : e.target.value}`, 'info')
-            }}
-            style={{
-              ...S.meetingSelect,
-              fontSize: 12,
-              padding: '4px 8px',
-              minWidth: 120
-            }}
-          >
+          <select value={toxicityFilter}
+            onChange={e => { setToxicityFilter(e.target.value); showToast(`Filter: ${e.target.value === 'all' ? 'All Messages' : e.target.value}`, 'info') }}
+            style={{ ...S.meetingSelect, fontSize: 12, padding: '4px 8px', minWidth: 120 }}>
             <option value="all">All Messages</option>
             <option value="safe">✅ Safe Only</option>
             <option value="toxic">⚠️ Toxic Only</option>
           </select>
-
           {(sentimentFilter !== 'all' || toxicityFilter !== 'all') && (
-            <button
-              onClick={() => {
-                setSentimentFilter('all')
-                setToxicityFilter('all')
-                showToast('Filters cleared', 'info')
-              }}
-              style={{
-                ...S.ctrlBtn,
-                fontSize: 11,
-                padding: '4px 10px',
-                backgroundColor: '#FF3B30'
-              }}
-            >
+            <button onClick={() => { setSentimentFilter('all'); setToxicityFilter('all'); showToast('Filters cleared', 'info') }}
+              style={{ ...S.ctrlBtn, fontSize: 11, padding: '4px 10px', backgroundColor: '#FF3B30' }}>
               Clear Filters
             </button>
           )}
@@ -780,8 +657,7 @@ function App() {
         {/* Progress bar */}
         <div style={S.barOuter}>
           <div style={{
-            ...S.barInner,
-            width: `${progressPct}%`,
+            ...S.barInner, width: `${progressPct}%`,
             backgroundColor: isFinished ? '#34C759' : isPlaying ? '#007AFF' : '#636366'
           }} />
         </div>
@@ -814,8 +690,7 @@ function App() {
                         </div>
                         <button
                           style={{ ...S.togBtn, backgroundColor: visibleWidgets[w.id] ? '#007AFF' : '#3a3a3c', color: visibleWidgets[w.id] ? '#fff' : '#8e8e93' }}
-                          onClick={e => { e.stopPropagation(); toggleWidget(w.id) }}
-                        >
+                          onClick={e => { e.stopPropagation(); toggleWidget(w.id) }}>
                           {visibleWidgets[w.id] ? 'ON' : 'OFF'}
                         </button>
                       </div>
@@ -832,19 +707,15 @@ function App() {
         </div>
       )}
 
-      {/* ══ ERROR ══════════════════════════════════════════════════ */}
       {error && <div style={S.errBanner}>⚠ {error}</div>}
 
-      {/* ══ LOADING ════════════════════════════════════════════════ */}
       {loading && (
         <div style={S.loadBox}>
-          {/* 🆕 Loading Skeleton */}
           <div style={S.spinner} />
           <p style={{ color: '#8e8e93', marginTop: 12 }}>Loading meeting data…</p>
         </div>
       )}
 
-      {/* ══ EMPTY STATE ════════════════════════════════════════════ */}
       {!loading && !error && total > 0 && playbackIndex === 0 && !isPlaying && (
         <div style={S.emptyBox}>
           <div style={{ fontSize: 52, color: '#3a3a3c' }}>▶</div>
@@ -857,7 +728,6 @@ function App() {
         </div>
       )}
 
-      {/* ══ WIDGET GRID ════════════════════════════════════════════ */}
       {!loading && liveTranscript.length > 0 && (() => {
         const wgt = (id, title, wide, children) => (
           <Wgt key={id} id={id} title={title} wide={wide}
@@ -868,30 +738,26 @@ function App() {
           </Wgt>
         )
         const col = (id) => resolveColor(widgetConfigs[id], participants)
-
-        // Apply filters to transcript for widgets
         const filteredLive = applyFilters(liveTranscript)
 
         const kpiMessages = wgt('messages', 'Messages', false,
           (() => { const d = applyFilters(getFiltered('messages'))
             return <><div style={S.kpiVal}>{d.length}</div><div style={S.kpiLab}>messages so far</div></> })())
-        
+
         const kpiSentiment = wgt('sentiment', 'Sentiment', false,
           (() => { const s = calcStats(applyFilters(getFiltered('sentiment')))
             return <PolarityKPI polarity={s.sentiment.average_polarity} posRatio={s.sentiment.positive_ratio} accentColor={col('sentiment')} /> })())
-        
+
         const kpiToxicity = wgt('toxicity', 'Toxic Messages', false,
           (() => { const s = calcStats(applyFilters(getFiltered('toxicity')))
             return <><div style={{ ...S.kpiVal, color: col('toxicity') }}>{s.toxicity.toxic_count}</div><div style={S.kpiLab}>{(s.toxicity.toxic_ratio*100).toFixed(0)}% toxic</div></> })())
-        
-        // 🆕 Health Score Widget
+
         const kpiHealth = wgt('healthScore', 'Health Score', false,
-          (() => { 
+          (() => {
             const s = calcStats(applyFilters(getFiltered('healthScore')))
             const score = calculateHealthScore(s)
             const color = score >= 70 ? '#34C759' : score >= 40 ? '#FF9500' : '#FF3B30'
             const label = score >= 70 ? 'Healthy' : score >= 40 ? 'Fair' : 'Concerning'
-            
             return (
               <>
                 <div style={{ ...S.kpiVal, color, fontSize: isMobile ? 36 : 48 }}>{score}</div>
@@ -900,24 +766,24 @@ function App() {
               </>
             )
           })())
-        
+
         const wSentDist = wgt('sentimentDist', 'Sentiment Distribution', true,
           (() => { const s = calcStats(applyFilters(getFiltered('sentimentDist')))
             return <SentimentDistChart data={s.sentiment.distribution} cfg={{ ...widgetConfigs.sentimentDist, color: col('sentimentDist') }} /> })())
-        
+
         const wTimeSent = wgt('timelineSentiment', 'Sentiment Timeline', true,
           <TimelineChart messages={applyFilters(getFiltered('timelineSentiment'))} cfg={{ ...widgetConfigs.timelineSentiment, color: col('timelineSentiment') }} />)
-        
+
         const wTimeTox = wgt('timelineToxicity', 'Toxicity Timeline', true,
           <TimelineChart messages={applyFilters(getFiltered('timelineToxicity'))} cfg={{ ...widgetConfigs.timelineToxicity, color: col('timelineToxicity') }} />)
-        
+
         const wGauge = wgt('toxicityGauge', 'Toxicity Severity', false,
           (() => { const s = calcStats(applyFilters(getFiltered('toxicityGauge')))
             return <ToxicityGauge score={s.toxicity.average_toxicity_score} accentColor={col('toxicityGauge')} /> })())
-        
+
         const wRoster = wgt('participantRoster', 'Participant Roster', true,
           <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
-        
+
         const wStream = wgt('messageStream', 'Message Stream', true,
           <MessageStream messages={applyFilters(getFiltered('messageStream'))} cfg={widgetConfigs.messageStream} participantColors={PARTICIPANT_COLORS} participants={participants} />)
 
@@ -939,7 +805,7 @@ function App() {
         return (
           <div style={{
             ...S.grid,
-            gridTemplateColumns: isMobile 
+            gridTemplateColumns: isMobile
               ? '1fr'
               : isTablet
                 ? 'repeat(auto-fill, minmax(240px, 1fr))'
@@ -960,17 +826,13 @@ function App() {
       </div>
       </div>
 
-      {/* 🆕 CSS Animation for Toasts */}
       <style>{`
         @keyframes slideIn {
-          from {
-            transform: translateX(400px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
+          from { transform: translateX(400px); opacity: 0; }
+          to   { transform: translateX(0);     opacity: 1; }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
@@ -1016,7 +878,7 @@ function Wgt({ id, title, children, wide, cfg, participants, onCfg, open, setOpe
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CHARTS & COMPONENTS (unchanged, keeping existing implementations)
+// CHARTS & COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════
 
 function PolarityKPI({ polarity, posRatio, accentColor }) {
@@ -1066,9 +928,7 @@ function ParticipantRoster({ stats, participantColors }) {
         return (
           <div key={p.id} style={{ ...R.card, borderColor: pColor + '44' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ ...R.av, backgroundColor: pColor }}>
-                {p.name.slice(0,2).toUpperCase()}
-              </div>
+              <div style={{ ...R.av, backgroundColor: pColor }}>{p.name.slice(0,2).toUpperCase()}</div>
               <div>
                 <div style={R.name}>{p.name}</div>
                 <span style={{ ...R.badge, backgroundColor: dc+'22', color: dc }}>{dom}</span>
@@ -1114,13 +974,9 @@ function SentimentDistChart({ data, cfg }) {
   const tot = (data.positive||0)+(data.neutral||0)+(data.negative||0)
   if (tot === 0) return <div style={S.empty}>No data yet</div>
   const hasParticipant = cfg.color !== cfg._defaultColor
-  const posCol = '#34C759'
-  const neuCol = '#FFCC00'
-  const negCol = '#FF3B30'
-  const acCol  = cfg.color || posCol
   const [c1, c2, c3] = hasParticipant
-    ? [acCol, acCol + 'AA', acCol + '66']
-    : [posCol, neuCol, negCol]
+    ? [cfg.color, cfg.color + 'AA', cfg.color + '66']
+    : ['#34C759', '#FFCC00', '#FF3B30']
   return (
     <div style={{ height: 140 }}>
       <Bar
@@ -1237,7 +1093,6 @@ function MessageStream({ messages, cfg, participantColors, participants }) {
 
 const S = {
   app:    { backgroundColor:'#1c1c1e', fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif', color:'#fff', minHeight: '100vh' },
-
   sidebar:  { position:'sticky', top:0, height:'100vh', flexShrink:0, backgroundColor:'rgba(20,20,22,0.98)', borderRight:'0.5px solid rgba(255,255,255,0.08)', display:'flex', flexDirection:'column', alignItems:'stretch', padding:'10px 0', overflow:'hidden', zIndex:90 },
   sbToggle: { background:'none', border:'none', color:'#8e8e93', cursor:'pointer', fontSize:18, padding:'8px 0', width:'100%', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1, marginBottom:4, transition:'color 0.2s' },
   sbDivider:{ height:'0.5px', backgroundColor:'rgba(255,255,255,0.07)', margin:'4px 10px 8px' },
@@ -1245,7 +1100,6 @@ const S = {
   sbIcon:   { fontSize:17, flexShrink:0, width:22, textAlign:'center' },
   sbLabel:  { fontSize:13, fontWeight:500, opacity:1, transition:'opacity 0.2s' },
   sbFooter: { fontSize:10, color:'#3a3a3c', padding:'12px 14px', lineHeight:1.4, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.5px' },
-
   header: { position:'sticky', top:0, zIndex:95, backgroundColor:'rgba(28,28,30,0.96)', backdropFilter:'saturate(180%) blur(20px)', borderBottom:'0.5px solid rgba(255,255,255,0.1)' },
   hRow:   { maxWidth:1400, margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, padding:'12px 20px 8px' },
   hLeft:  { display:'flex', alignItems:'center', gap:12 },
@@ -1253,9 +1107,7 @@ const S = {
   logo:   { width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#007AFF,#5856D6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 },
   title:  { fontSize:17, fontWeight:700, margin:0 },
   subtitle:{ fontSize:12, color:'#8e8e93', margin:0 },
-
   meetingSelect: { backgroundColor:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:10, color:'#fff', padding:'7px 12px', fontSize:13, fontWeight:600, cursor:'pointer', outline:'none' },
-
   ctrlBtn:    { border:'none', borderRadius:8, padding:'6px 12px', fontSize:13, color:'#fff', cursor:'pointer', backgroundColor:'#3a3a3c', fontWeight:600, whiteSpace: 'nowrap' },
   speedGroup: { display:'flex', gap:3, backgroundColor:'rgba(255,255,255,0.07)', borderRadius:8, padding:3 },
   speedBtn:   { border:'none', borderRadius:6, padding:'4px 9px', fontSize:12, color:'#8e8e93', cursor:'pointer', backgroundColor:'transparent', fontWeight:500 },
@@ -1264,11 +1116,9 @@ const S = {
   tsCurr:     { fontSize:14, fontWeight:700, color:'#fff' },
   tsTotal:    { fontSize:12, color:'#8e8e93' },
   custBtn:    { display:'flex', alignItems:'center', backgroundColor:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:10, padding:'7px 14px', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:500 },
-
   barOuter: { height:4, backgroundColor:'rgba(255,255,255,0.07)' },
   barInner: { height:'100%', transition:'width 0.3s ease, background-color 0.5s' },
   barStats: { display:'flex', justifyContent:'space-between', padding:'4px 20px 6px', fontSize:11, color:'#636366' },
-
   overlayBg: { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.5)', zIndex:200, display:'flex', justifyContent:'flex-end' },
   sidePanel: { width:'clamp(300px,90vw,420px)', height:'100%', backgroundColor:'#1c1c1e', borderLeft:'0.5px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', overflowY:'hidden' },
   spHead:    { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'18px 20px', borderBottom:'0.5px solid rgba(255,255,255,0.08)' },
@@ -1281,7 +1131,6 @@ const S = {
   wDesc:     { fontSize:12, color:'#8e8e93', lineHeight:1.45 },
   togBtn:    { border:'none', borderRadius:7, padding:'5px 12px', cursor:'pointer', fontSize:12, fontWeight:600, flexShrink:0, marginTop:2 },
   div:       { height:'0.5px', backgroundColor:'rgba(255,255,255,0.06)', margin:'0 20px' },
-
   grid:      { maxWidth:1400, margin:'0 auto', padding:'clamp(1rem,3vw,1.5rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
   widget:    { backgroundColor:'rgba(255,255,255,0.05)', borderRadius:16, border:'0.5px solid rgba(255,255,255,0.1)', overflow:'hidden' },
   widgetWide:{ gridColumn:'1 / -1' },
@@ -1292,12 +1141,9 @@ const S = {
   setLabel:  { fontSize:12, color:'#8e8e93', whiteSpace:'nowrap' },
   setSelect: { flex:1, backgroundColor:'rgba(255,255,255,0.1)', border:'0.5px solid rgba(255,255,255,0.15)', borderRadius:7, color:'#fff', padding:'4px 8px', fontSize:12 },
   wBody:     { padding:'10px 15px 15px' },
-
   viewTitle: { gridColumn:'1/-1', fontSize:20, fontWeight:700, color:'#fff', padding:'4px 0 8px', display:'flex', alignItems:'center', gap:8 },
-
   kpiVal:    { fontSize:40, fontWeight:700, color:'#fff', lineHeight:1, fontVariantNumeric: 'tabular-nums' },
   kpiLab:    { fontSize:12, color:'#8e8e93', marginTop:4 },
-
   loadBox:   { display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh' },
   spinner:   { width:32, height:32, border:'3px solid rgba(255,255,255,0.1)', borderTop:'3px solid #007AFF', borderRadius:'50%', animation:'spin 1s linear infinite' },
   errBanner: { backgroundColor:'rgba(255,59,48,0.15)', border:'0.5px solid rgba(255,59,48,0.3)', borderRadius:10, padding:'12px 20px', margin:16, color:'#FF3B30', fontSize:14 },

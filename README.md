@@ -779,11 +779,6 @@ Arianna non è raggiungibile o restituisce un formato diverso. Verificare:
 
 **HuggingFace Hub** — repository pubblico di modelli ML pre-addestrati. Al primo avvio dei container BERT, i modelli vengono scaricati automaticamente e memorizzati nel volume Docker (`bert-model-cache`, `bert-toxicity-cache`).
 
----
-
-*Documento aggiornato — Meeting Intelligence v2.0.0*
-```
-
 # docker-compose up --build
 
 # docker-compose down -v

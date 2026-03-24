@@ -157,6 +157,12 @@ class UnifiedAnalysisRequest(BaseModel):
 class BatchUnifiedAnalysisRequest(BaseModel):
     texts: List[str] = Field(..., max_items=100)
 
+    @validator("texts")
+    def texts_list_not_empty(cls, v: list) -> list:
+        if not v:
+            raise ValueError("texts list must contain at least one item")
+        return v
+
     @validator("texts", each_item=True)
     def each_text_must_not_be_blank(cls, v: str) -> str:
         if not v.strip():
@@ -176,6 +182,12 @@ class ToxicityAnalysisRequest(BaseModel):
 
 class BatchToxicityRequest(BaseModel):
     texts: List[str] = Field(..., max_items=100)
+
+    @validator("texts")
+    def texts_list_not_empty(cls, v: list) -> list:
+        if not v:
+            raise ValueError("texts list must contain at least one item")
+        return v
 
     @validator("texts", each_item=True)
     def each_text_must_not_be_blank(cls, v: str) -> str:
@@ -514,10 +526,13 @@ def _get_transcript(meeting_id: str) -> List[TranscriptEntry]:
 
 
 async def fetch_transcript_from_arianna(room_id: str, **params) -> List[TranscriptEntry]:
+    # httpx non filtra i None — mandarli ad Arianna causerebbe query string come
+    # "userId=None&startTime=None" che rompe il filtraggio. Filtriamo prima.
+    clean_params = {k: v for k, v in params.items() if v is not None and v is not False}
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(
             f"{ARIANNA_BASE_URL}/api/rooms/{room_id}/transcriptions",
-            params=params,
+            params=clean_params,
         )
         r.raise_for_status()
         raw = r.json().get("transcriptions", [])
