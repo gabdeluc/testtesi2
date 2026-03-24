@@ -204,3 +204,5 @@ docker-compose down -v
 
 # docker system prune -a --volumes
 # docker-compose exec backend sh
+
+# pip install pytest pytest-asyncio pytest-cov httpx --break-system-packages
