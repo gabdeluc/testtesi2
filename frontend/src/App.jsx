@@ -75,7 +75,10 @@ export default function App() {
 
   const [playbackIndex, setPlaybackIndex] = useState(0)
   const [isPlaying, setIsPlaying]         = useState(false)
-  const [speed, setSpeed]                 = useState(5)
+  // 'live'   — meeting in corso, velocità 1x reale, auto-start, no controlli velocità
+  // 'review' — revisione post-meeting, controlli velocità e scrubber abilitati
+  const [mode, setMode]                   = useState('live')
+  const [speed, setSpeed]                 = useState(5)   // usato solo in review
   const timerRef = useRef(null)
   const indexRef = useRef(0)
   const [wallSec, setWallSec] = useState(0)
@@ -138,6 +141,7 @@ export default function App() {
       stopTimerRef.current(); stopClockRef.current()
       indexRef.current = 0; wallRef.current = 0
       setPlaybackIndex(0); setWallSec(0); setIsPlaying(false)
+      setMode('live')  // ogni nuovo meeting riparte in modalità live
     }
     try {
       const [rP, rM] = await Promise.all([
@@ -152,7 +156,7 @@ export default function App() {
           showToast(`+${dM.transcript.length - prev.length} nuovi messaggi`, 'info')
         return dM.transcript
       })
-      if (!isRefresh) showToast('Meeting caricato', 'success')
+      if (!isRefresh) { showToast('Meeting caricato — sei entrato nel meeting', 'success'); setIsPlaying(true) }
     } catch {
       if (!isRefresh) { setError('Impossibile caricare il meeting'); showToast('Errore caricamento', 'error') }
     } finally {
@@ -190,6 +194,7 @@ export default function App() {
       if (transcript[next - 1])
         wallRef.current = tsToSec(transcript[next - 1].created_at) - tsToSec(transcript[0].created_at)
       scheduleNext(next, transcript, spd)
+    // in live mode il gap reale viene rispettato (spd=1), in review viene diviso per la velocità scelta
     }, Math.max(80, (gap * 1000) / spd))
   }, [])
 
@@ -205,18 +210,31 @@ export default function App() {
       if (indexRef.current >= allTranscript.length) {
         indexRef.current = 0; wallRef.current = 0; setPlaybackIndex(0); setWallSec(0)
       }
-      scheduleNext(indexRef.current, allTranscript, speed)
-      startClock(speed)
+      const effectiveSpeed = mode === 'live' ? 1 : speed
+      scheduleNext(indexRef.current, allTranscript, effectiveSpeed)
+      startClock(effectiveSpeed)
     } else { stopTimer(); stopClock() }
     return () => { stopTimer(); stopClock() }
   }, [isPlaying, allTranscript, speed, scheduleNext, startClock, stopTimer, stopClock])
 
-  const handlePlayPause  = () => setIsPlaying(p => !p)
+  // Pausa disponibile solo in modalità review
+  const handlePlayPause  = () => { if (mode === 'review') setIsPlaying(p => !p) }
+
+  // Entra in modalità review: ferma il live, resetta e dà controllo all'utente
+  const enterReviewMode  = () => {
+    stopTimer(); stopClock(); setIsPlaying(false)
+    indexRef.current = 0; wallRef.current = 0
+    setPlaybackIndex(0); setWallSec(0)
+    setMode('review')
+    setSpeed(5)
+  }
   const handleReset      = () => {
+    if (mode !== 'review') return
     stopTimer(); stopClock(); setIsPlaying(false)
     indexRef.current = 0; wallRef.current = 0; setPlaybackIndex(0); setWallSec(0)
   }
   const handleSpeedChange = s => {
+    if (mode !== 'review') return
     setSpeed(s)
     if (isPlaying) { stopTimer(); stopClock(); setIsPlaying(false); setTimeout(() => setIsPlaying(true), 30) }
   }
@@ -257,6 +275,7 @@ export default function App() {
   const totalSec   = total > 0 ? tsToSec(allTranscript[total - 1].created_at) - baseTs : 0
   const progressPct = totalSec > 0 ? Math.min((wallSec / totalSec) * 100, 100) : 0
   const isFinished  = playbackIndex >= total && total > 0
+  const liveEnded   = isFinished && mode === 'live'
 
   // ── stat helpers ──────────────────────────────────────────────────────────
   const calcStats = tr => {
@@ -458,32 +477,56 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={handleReset} style={Styles.btn} title="Riavvia">⏮</button>
-                <button onClick={handlePlayPause}
-                  style={{ ...Styles.btn, background: isPlaying ? '#FF9500' : '#34C759', minWidth: 86 }}>
-                  {isPlaying ? '⏸ Pausa' : isFinished ? '↺ Replay' : '▶ Play'}
-                </button>
+                {/* ── modalità LIVE ─────────────────────────────────────── */}
+                {mode === 'live' && (
+                  <>
+                    {/* Badge live pulsante */}
+                    <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
+                      background:'rgba(255,59,48,0.15)', border:'0.5px solid rgba(255,59,48,0.4)',
+                      borderRadius:8 }}>
+                      <span style={{ width:8, height:8, borderRadius:'50%', background:'#FF3B30',
+                        animation:'pulse 1.5s ease-in-out infinite', flexShrink:0 }} />
+                      <span style={{ fontSize:13, fontWeight:700, color:'#FF3B30' }}>IN DIRETTA</span>
+                    </div>
 
-                <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: 3 }}>
-                  {SPEEDS.map(s => (
-                    <button key={s} onClick={() => handleSpeedChange(s)}
-                      style={{ border: 'none', borderRadius: 5, padding: '3px 8px', fontSize: 12, cursor: 'pointer',
-                        background: speed === s ? '#007AFF' : 'transparent',
-                        color: speed === s ? '#fff' : '#8e8e93', fontWeight: speed === s ? 700 : 500 }}>
-                      {s}×
+                    <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff' }}>
+                      {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
+                    </span>
+
+                    {/* Auto-refresh per meeting Arianna */}
+                    <select value={refreshRate} onChange={e => setRefreshRate(Number(e.target.value))}
+                      style={Styles.select} title="Aggiornamento automatico (per meeting in corso su Arianna)">
+                      {REFRESH_OPTIONS.map(o => <option key={o.value} value={o.value}>🔄 {o.label}</option>)}
+                    </select>
+                  </>
+                )}
+
+                {/* ── modalità REVIEW ────────────────────────────────────── */}
+                {mode === 'review' && (
+                  <>
+                    <button onClick={handleReset} style={Styles.btn} title="Torna all'inizio">⏮</button>
+                    <button onClick={handlePlayPause}
+                      style={{ ...Styles.btn, background: isPlaying ? '#FF9500' : '#34C759', minWidth: 86 }}>
+                      {isPlaying ? '⏸ Pausa' : isFinished ? '↺ Riparti' : '▶ Play'}
                     </button>
-                  ))}
-                </div>
 
-                <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#fff' }}>
-                  {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
-                </span>
+                    {/* Selettore velocità — solo in review */}
+                    <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.07)', borderRadius:8, padding:3 }}>
+                      {SPEEDS.map(s => (
+                        <button key={s} onClick={() => handleSpeedChange(s)}
+                          style={{ border:'none', borderRadius:5, padding:'3px 8px', fontSize:12, cursor:'pointer',
+                            background: speed === s ? '#007AFF' : 'transparent',
+                            color: speed === s ? '#fff' : '#8e8e93', fontWeight: speed === s ? 700 : 500 }}>
+                          {s}×
+                        </button>
+                      ))}
+                    </div>
 
-                {/* Refresh rate — per meeting live */}
-                <select value={refreshRate} onChange={e => setRefreshRate(Number(e.target.value))}
-                  style={Styles.select} title="Aggiornamento automatico (utile per meeting in corso)">
-                  {REFRESH_OPTIONS.map(o => <option key={o.value} value={o.value}>🔄 {o.label}</option>)}
-                </select>
+                    <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff' }}>
+                      {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
+                    </span>
+                  </>
+                )}
 
                 <button onClick={() => setShowWidgetPanel(v => !v)} style={Styles.btn}>⚙️</button>
               </div>
@@ -521,16 +564,35 @@ export default function App() {
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 16px 6px', fontSize: 11, color: '#636366' }}>
               <span>{playbackIndex} / {total} messaggi</span>
               <span style={{ color: isPlaying ? '#007AFF' : isFinished ? '#34C759' : '#636366' }}>
-                {isPlaying ? `● Live ${speed}×` : isFinished ? '✓ Completato' : '⏸ In pausa'}
+                {mode === 'live' && isPlaying  && '● In diretta'}
+                {mode === 'live' && liveEnded  && '✓ Meeting concluso'}
+                {mode === 'review' && isPlaying && `▶ Revisione ${speed}×`}
+                {mode === 'review' && !isPlaying && !isFinished && '⏸ In pausa'}
+                {mode === 'review' && isFinished && '✓ Fine revisione'}
               </span>
             </div>
 
             {/* Export — visibile solo quando il meeting è concluso */}
-            {isFinished && (
-              <div style={{ maxWidth: 1400, margin: '0 auto', padding: '8px 16px 12px', display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#8e8e93' }}>Scarica i dati del meeting:</span>
-                <button onClick={exportJSON} style={{ ...Styles.btn, background: '#5856D6' }}>📥 Esporta JSON</button>
-                <button onClick={exportCSV}  style={{ ...Styles.btn, background: '#5856D6' }}>📊 Esporta CSV</button>
+            {/* Meeting concluso in live → offri revisione + export */}
+            {liveEnded && (
+              <div style={{ maxWidth:1400, margin:'0 auto', padding:'8px 16px 12px',
+                display:'flex', gap:10, alignItems:'center', flexWrap:'wrap',
+                borderTop:'0.5px solid rgba(255,255,255,0.08)' }}>
+                <span style={{ fontSize:13, fontWeight:600, color:'#fff' }}>Meeting concluso.</span>
+                <button onClick={enterReviewMode}
+                  style={{ ...Styles.btn, background:'#007AFF' }}>
+                  ↩ Rivedi dall'inizio
+                </button>
+                <button onClick={exportJSON} style={{ ...Styles.btn, background:'#5856D6' }}>📥 Esporta JSON</button>
+                <button onClick={exportCSV}  style={{ ...Styles.btn, background:'#5856D6' }}>📊 Esporta CSV</button>
+              </div>
+            )}
+            {/* In revisione → solo export */}
+            {mode === 'review' && isFinished && (
+              <div style={{ maxWidth:1400, margin:'0 auto', padding:'8px 16px 12px', display:'flex', gap:8, alignItems:'center' }}>
+                <span style={{ fontSize:12, color:'#8e8e93' }}>Scarica i dati:</span>
+                <button onClick={exportJSON} style={{ ...Styles.btn, background:'#5856D6' }}>📥 Esporta JSON</button>
+                <button onClick={exportCSV}  style={{ ...Styles.btn, background:'#5856D6' }}>📊 Esporta CSV</button>
               </div>
             )}
           </div>
@@ -552,17 +614,18 @@ export default function App() {
           )}
 
           {/* Empty state */}
-          {!loading && !error && total > 0 && playbackIndex === 0 && !isPlaying && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16, padding: 24 }}>
-              <div style={{ fontSize: 48, color: '#3a3a3c' }}>▶</div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>Pronto</div>
-              <div style={{ fontSize: 14, color: '#8e8e93', textAlign: 'center', lineHeight: 1.7 }}>
+          {/* In review mode: mostra schermata iniziale se resettato */}
+          {!loading && !error && total > 0 && playbackIndex === 0 && !isPlaying && mode === 'review' && (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'60vh', gap:16, padding:24 }}>
+              <div style={{ fontSize:48, color:'#3a3a3c' }}>↩</div>
+              <div style={{ fontSize:20, fontWeight:700 }}>Revisione</div>
+              <div style={{ fontSize:14, color:'#8e8e93', textAlign:'center', lineHeight:1.7 }}>
                 {total} messaggi · {secToLabel(totalSec)} durata totale<br />
-                Premi <strong>Play</strong> per avviare il playback
+                Premi <strong>Play</strong> e scegli la velocità di revisione
               </div>
               <button onClick={handlePlayPause}
-                style={{ ...Styles.btn, background: '#34C759', padding: '14px 36px', fontSize: 16, fontWeight: 700, borderRadius: 14 }}>
-                ▶ Avvia Playback
+                style={{ ...Styles.btn, background:'#007AFF', padding:'14px 36px', fontSize:16, fontWeight:700, borderRadius:14 }}>
+                ▶ Inizia Revisione
               </button>
             </div>
           )}
@@ -651,6 +714,7 @@ export default function App() {
       <style>{`
         @keyframes slideIn { from { transform: translateX(300px); opacity: 0 } to { transform: translateX(0); opacity: 1 } }
         @keyframes spin    { to   { transform: rotate(360deg) } }
+        @keyframes pulse   { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
         * { box-sizing: border-box }
       `}</style>
     </div>
