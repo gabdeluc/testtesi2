@@ -121,6 +121,7 @@ export default function App() {
   const [openSettings,     setOpenSettings]    = useState(null)
   const [refreshRate,      setRefreshRate]     = useState(0)
   const [toasts,           setToasts]          = useState([])
+  const [showJoinBanner,   setShowJoinBanner]  = useState(false)
 
   const [visibleWidgets, setVisibleWidgets] = useState(() => {
     try { const s = localStorage.getItem('visibleWidgets'); if (s) return JSON.parse(s) } catch {}
@@ -202,7 +203,8 @@ export default function App() {
             wallRef.current = elapsed
             setWallSec(elapsed)
           }
-          showToast(`Sei entrato al messaggio ${joinAt+1}/${n} — ${joinAt} messaggi precedenti`, 'info')
+          setShowJoinBanner(true)
+          setTimeout(() => setShowJoinBanner(false), 5000)
         } else {
           setJoinOffset(0)
         }
@@ -360,9 +362,11 @@ export default function App() {
    * - In LIVE: solo i messaggi da joinOffset in poi (quelli durante la tua presenza)
    * - In REVIEW: tutto, dall'inizio assoluto
    */
-  const liveTranscript = mode === 'review'
-    ? allTranscript.slice(0, playbackIndex)
-    : allTranscript.slice(joinOffset, playbackIndex)
+  // Mostra sempre tutto il transcript fino al punto corrente del playback.
+  // In live mode il joinOffset determina DA DOVE iniziano ad arrivare nuovi messaggi,
+  // ma i messaggi precedenti all'ingresso vengono mostrati subito nei widget
+  // (situazione pregressa del meeting).
+  const liveTranscript = allTranscript.slice(0, playbackIndex)
 
   const total      = allTranscript.length
   const baseTs     = total > 0 ? tsToSec(allTranscript[0].created_at) : 0
@@ -576,8 +580,11 @@ export default function App() {
                       {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
                     </span>
 
+                    {/* Refresh rate: ri-fetcha il transcript da Arianna se USE_ARIANNA=true.
+                         In modalità mock i dati non cambiano, quindi è visivamente inattivo. */}
                     <select value={refreshRate} onChange={e => setRefreshRate(Number(e.target.value))}
-                      style={S.select} title="Aggiornamento automatico (meeting Arianna)">
+                      style={{ ...S.select, opacity: 0.7 }}
+                      title="Aggiornamento automatico (solo con USE_ARIANNA=true sul backend)">
                       {REFRESH_OPTIONS.map(o => <option key={o.value} value={o.value}>🔄 {o.label}</option>)}
                     </select>
                   </>
@@ -668,14 +675,18 @@ export default function App() {
             )}
           </div>
 
-          {/* Banner messaggi precedenti all'ingresso */}
-          {!loading && mode === 'live' && joinOffset > 0 && liveTranscript.length === 0 && (
+          {/* Banner ingresso a meeting in corso — si mostra 5s poi scompare */}
+          {showJoinBanner && joinOffset > 0 && (
             <div style={{ margin:'12px 16px', padding:'10px 14px',
               background:'rgba(0,122,255,0.1)', border:'0.5px solid rgba(0,122,255,0.3)',
-              borderRadius:10, fontSize:13, color:'#007AFF' }}>
-              ℹ️ Sei entrato con il meeting già in corso.
-              <strong> {joinOffset} messaggi precedenti</strong> non sono visibili ora
-              — saranno disponibili quando riavvolgi a fine meeting.
+              borderRadius:10, fontSize:13, color:'#007AFF',
+              display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span>
+                ℹ️ Sei entrato con il meeting in corso al messaggio <strong>{joinOffset+1}/{total}</strong>.
+                I messaggi precedenti sono già visibili nei widget.
+              </span>
+              <button onClick={() => setShowJoinBanner(false)}
+                style={{ background:'none', border:'none', color:'#007AFF', cursor:'pointer', fontSize:16, padding:'0 4px' }}>✕</button>
             </div>
           )}
 
