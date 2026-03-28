@@ -424,9 +424,13 @@ export default function App() {
       ...p, stats: calcStats(liveTranscript.filter(e => e.participant_name === p.name))
     }))
 
-  const calcHealth = stats => {
-    if (stats.total_messages === 0) return 0
-    return Math.round((stats.sentiment.positive_ratio||0) * 70 + (1 - (stats.toxicity.toxic_ratio||0)) * 30)
+  // Sentiment Polarity Index: metrica standard in letteratura sentiment analysis.
+  // Range [-1, +1]: -1 = tutto negativo, 0 = bilanciato, +1 = tutto positivo.
+  // Formula: (positivi - negativi) / totale
+  const calcPolarity = stats => {
+    if (stats.total_messages === 0) return null
+    const { positive, negative } = stats.sentiment.distribution
+    return ((positive - negative) / stats.total_messages)
   }
 
   // ── widget sections ───────────────────────────────────────────────────────
@@ -435,7 +439,7 @@ export default function App() {
       { id:'messages',    name:'Messaggi',      desc:'Contatore messaggi ricevuti.' },
       { id:'sentimentKPI',name:'Sentiment %',   desc:'Distribuzione positivo/neutro/negativo.' },
       { id:'toxicityKPI', name:'Tossicità',     desc:'Conteggio e % messaggi tossici.' },
-      { id:'healthScore', name:'Health Score',  desc:'Punteggio 0-100 basato su sentiment e tossicità.' },
+      { id:'healthScore', name:'Sentiment Polarity', desc:'Indice [-1,+1]: (positivi-negativi)/totale. 0=bilanciato.' },
     ]},
     { title:'Grafici', items:[
       { id:'sentimentDist',     name:'Distribuzione Sentiment', desc:'Barra pos/neu/neg in percentuale.' },
@@ -461,20 +465,23 @@ export default function App() {
     ) : null
 
   const buildWidgets = () => {
-    const hs = calcHealth(S_id('healthScore'))
+    const polarity = calcPolarity(S_id('healthScore'))
     const wMessages   = wgt('messages','Messaggi',false,
       <><div style={S.kpiVal}>{F('messages').length}</div><div style={S.kpiLab}>messaggi ricevuti</div></>)
     const wSentKPI    = wgt('sentimentKPI','Sentiment',false,   <SentimentKPI stats={S_id('sentimentKPI')} />)
     const wToxKPI     = wgt('toxicityKPI', 'Tossicità', false,  <ToxicityKPI  stats={S_id('toxicityKPI')} />)
-    const wHealth     = wgt('healthScore','Health Score',false,(() => {
-      const color = hs>=70?'#34C759':hs>=40?'#FF9500':'#FF3B30'
+    const wHealth     = wgt('healthScore','Sentiment Polarity Index',false,(() => {
+      if (polarity === null) return <Empty />
+      const color = polarity>=0.3?'#34C759':polarity<=-0.3?'#FF3B30':'#FF9500'
       return (
         <>
-          <div style={{ ...S.kpiVal, color, fontSize:44 }}>{hs}</div>
-          <div style={{ fontSize:11, color, fontWeight:700, textTransform:'uppercase', marginTop:2 }}>
-            {hs>=70?'Sano':hs>=40?'Accettabile':'Critico'}
+          <div style={{ ...S.kpiVal, color, fontSize:44, fontVariantNumeric:'tabular-nums' }}>
+            {polarity >= 0 ? '+' : ''}{polarity.toFixed(2)}
           </div>
-          <div style={S.kpiLab}>70% messaggi positivi + 30% assenza tossicità</div>
+          <div style={{ fontSize:11, color, fontWeight:700, textTransform:'uppercase', marginTop:2 }}>
+            {polarity >= 0.3 ? 'Positivo' : polarity <= -0.3 ? 'Negativo' : 'Neutro'}
+          </div>
+          <div style={S.kpiLab}>(positivi − negativi) / totale · range [−1, +1]</div>
         </>
       )
     })())
@@ -483,8 +490,8 @@ export default function App() {
       <TimelineChart messages={F('timelineSentiment')} metric="sentiment" color="#00C7BE" yLabel="Sentiment score (0–100%)" />)
     const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — ogni punto = un messaggio',true,
       <TimelineChart messages={F('timelineToxicity')} metric="toxicity"  color="#FF6B6B" yLabel="Toxicity score (0–100%)" />)
-    const wGauge      = wgt('toxicityGauge','Media Tossicità',false,
-      <ToxicityGauge score={S_id('toxicityGauge').toxicity.average_toxicity_score} />)
+    const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',false,
+      <ToxicityGauge score={S_id('toxicityGauge').toxicity.toxic_ratio} />)
     const wRoster     = wgt('participantRoster','Partecipanti',true,
       <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
     const wStream     = wgt('messageStream','Stream Messaggi',true,
@@ -982,7 +989,7 @@ function ToxicityGauge({ score }) {
       <div style={{ position:'absolute', bottom:8, textAlign:'center' }}>
         <div style={{ fontSize:22, fontWeight:700, color:col }}>{pct}%</div>
         <div style={{ fontSize:11, color:'#8e8e93' }}>Tossicità {lbl}</div>
-        <div style={{ fontSize:10, color:'#636366' }}>media su tutti i messaggi</div>
+        <div style={{ fontSize:10, color:'#636366' }}>% messaggi sopra soglia 0.5</div>
       </div>
     </div>
   )
