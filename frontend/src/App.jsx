@@ -424,7 +424,7 @@ export default function App() {
       ...p, stats: calcStats(liveTranscript.filter(e => e.participant_name === p.name))
     }))
 
-  // Sentiment Polarity Index: metrica standard in letteratura sentiment analysis.
+  // Sentiment Polarity ratio Index: metrica standard in letteratura sentiment analysis.
   // Range [-1, +1]: -1 = tutto negativo, 0 = bilanciato, +1 = tutto positivo.
   // Formula: (positivi - negativi) / totale
   const calcPolarity = stats => {
@@ -470,7 +470,7 @@ export default function App() {
       <><div style={S.kpiVal}>{F('messages').length}</div><div style={S.kpiLab}>messaggi ricevuti</div></>)
     const wSentKPI    = wgt('sentimentKPI','Sentiment',false,   <SentimentKPI stats={S_id('sentimentKPI')} />)
     const wToxKPI     = wgt('toxicityKPI', 'Tossicità', false,  <ToxicityKPI  stats={S_id('toxicityKPI')} />)
-    const wHealth     = wgt('healthScore','Sentiment Polarity Index',false,(() => {
+    const wHealth     = wgt('healthScore','Polarity Ratio',false,(() => {
       if (polarity === null) return <Empty />
       const color = polarity>=0.3?'#34C759':polarity<=-0.3?'#FF3B30':'#FF9500'
       return (
@@ -731,7 +731,7 @@ export default function App() {
 
           {/* Widget grid */}
           {!loading && liveTranscript.length > 0 && (
-            <div style={{ ...S.grid, gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            <div style={{ ...S.grid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(280px, 1fr))' }}>
               {activeView !== 'overview' && (
                 <div style={{ gridColumn:'1/-1', fontSize:18, fontWeight:700, color:'#fff', padding:'4px 0 8px', display:'flex', alignItems:'center', gap:8 }}>
                   {NAV_ITEMS.find(n => n.id===activeView)?.icon}{' '}
@@ -884,16 +884,20 @@ function ToxicityKPI({ stats }) {
     <div>
       <div style={{ fontSize:42, fontWeight:700, color, lineHeight:1 }}>{toxic_count}</div>
       <div style={{ fontSize:12, color:'#8e8e93', marginBottom:12 }}>messaggi tossici su {n} ({pct}%)</div>
+      {/* Distribuzione severità: tutti i messaggi categorizzati per score BERT grezzo,
+           indipendentemente dalla soglia 0.5. Bassi = score<0.4, Medi = 0.4–0.7, Alti = >0.7 */}
+      <div style={{ fontSize:10, color:'#636366', marginBottom:4 }}>
+        Distribuzione score grezzo (tutti i messaggi):
+      </div>
       <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10 }}>
-        {[['Bassi',sv.low,'#34C759'],['Medi',sv.medium,'#FF9500'],['Alti',sv.high,'#FF3B30']].map(([lbl,val,c]) => (
+        {[['Score basso',sv.low,'#34C759'],['Score medio',sv.medium,'#FF9500'],['Score alto',sv.high,'#FF3B30']].map(([lbl,val,c]) => (
           <span key={lbl} style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:`${c}18`, color:c }}>
             {val} {lbl}
           </span>
         ))}
       </div>
-      <div style={{ fontSize:12, color:'#8e8e93' }}>
-        Score medio: <strong style={{ color:'#fff' }}>{avgPct}%</strong>
-        <span style={{ fontSize:10, color:'#636366', marginLeft:4 }}>(0% = sicuro, 100% = molto tossico)</span>
+      <div style={{ fontSize:11, color:'#636366' }}>
+        Soglia tossico: score &gt; 50% · score medio = {avgPct}%
       </div>
     </div>
   )
@@ -1096,7 +1100,7 @@ const S = {
   select:  { background:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:8, color:'#fff', padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', outline:'none' },
   btn:     { border:'none', borderRadius:8, padding:'6px 12px', fontSize:13, color:'#fff', cursor:'pointer', background:'#3a3a3c', fontWeight:600, whiteSpace:'nowrap' },
   grid:    { maxWidth:1400, margin:'0 auto', padding:'clamp(0.75rem,3vw,1.25rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
-  kpiVal:  { fontSize:40, fontWeight:700, color:'#fff', lineHeight:1 },
+  kpiVal:  { fontSize:36, fontWeight:700, color:'#fff', lineHeight:1 },
   kpiLab:  { fontSize:11, color:'#8e8e93', marginTop:3 },
   bottomNav:    { position:'fixed', bottom:0, left:0, right:0, zIndex:100, background:'rgba(20,20,22,0.98)', borderTop:'0.5px solid rgba(255,255,255,0.1)', display:'flex', paddingBottom:'env(safe-area-inset-bottom,0px)' },
   bottomNavItem:{ flex:1, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'8px 4px 6px' },
