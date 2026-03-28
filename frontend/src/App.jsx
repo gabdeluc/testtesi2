@@ -42,12 +42,6 @@ const NAV_ITEMS = [
   { id: 'participants', icon: '👥', label: 'Partecipanti' },
   { id: 'stream',       icon: '▤', label: 'Stream' },
 ]
-const REFRESH_OPTIONS = [
-  { label: 'Off', value: 0 },
-  { label: '5s',  value: 5 },
-  { label: '10s', value: 10 },
-  { label: '30s', value: 30 },
-]
 
 const tsToSec    = ts => ts ? new Date(ts).getTime() / 1000 : 0
 const secToLabel = sec => {
@@ -119,7 +113,6 @@ export default function App() {
   const [selectedMeeting,  setSelectedMeeting] = useState('mtg001')
   const [showWidgetPanel,  setShowWidgetPanel] = useState(false)
   const [openSettings,     setOpenSettings]    = useState(null)
-  const [refreshRate,      setRefreshRate]     = useState(0)
   const [toasts,           setToasts]          = useState([])
   const [showJoinBanner,   setShowJoinBanner]  = useState(false)
 
@@ -230,11 +223,7 @@ export default function App() {
 
   useEffect(() => { loadMeeting(selectedMeeting) }, [selectedMeeting, loadMeeting])
 
-  useEffect(() => {
-    if (refreshRate === 0) return
-    const id = setInterval(() => loadMeeting(selectedMeeting, true), refreshRate*1000)
-    return () => clearInterval(id)
-  }, [refreshRate, selectedMeeting, loadMeeting])
+  // refresh rate rimosso: i dati mock non cambiano tra una fetch e l'altra
 
   useEffect(() => {
     try { localStorage.setItem('visibleWidgets', JSON.stringify(visibleWidgets)) } catch {}
@@ -424,7 +413,7 @@ export default function App() {
       ...p, stats: calcStats(liveTranscript.filter(e => e.participant_name === p.name))
     }))
 
-  // Sentiment Polarity ratio Index: metrica standard in letteratura sentiment analysis.
+  // Sentiment Polarity Index: metrica standard in letteratura sentiment analysis.
   // Range [-1, +1]: -1 = tutto negativo, 0 = bilanciato, +1 = tutto positivo.
   // Formula: (positivi - negativi) / totale
   const calcPolarity = stats => {
@@ -470,7 +459,7 @@ export default function App() {
       <><div style={S.kpiVal}>{F('messages').length}</div><div style={S.kpiLab}>messaggi ricevuti</div></>)
     const wSentKPI    = wgt('sentimentKPI','Sentiment',false,   <SentimentKPI stats={S_id('sentimentKPI')} />)
     const wToxKPI     = wgt('toxicityKPI', 'Tossicità', false,  <ToxicityKPI  stats={S_id('toxicityKPI')} />)
-    const wHealth     = wgt('healthScore','Polarity Ratio',false,(() => {
+    const wHealth     = wgt('healthScore','Sentiment Polarity Index',false,(() => {
       if (polarity === null) return <Empty />
       const color = polarity>=0.3?'#34C759':polarity<=-0.3?'#FF3B30':'#FF9500'
       return (
@@ -490,7 +479,7 @@ export default function App() {
       <TimelineChart messages={F('timelineSentiment')} metric="sentiment" color="#00C7BE" yLabel="Sentiment score (0–100%)" />)
     const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — ogni punto = un messaggio',true,
       <TimelineChart messages={F('timelineToxicity')} metric="toxicity"  color="#FF6B6B" yLabel="Toxicity score (0–100%)" />)
-    const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',false,
+    const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',true,
       <ToxicityGauge score={S_id('toxicityGauge').toxicity.toxic_ratio} />)
     const wRoster     = wgt('participantRoster','Partecipanti',true,
       <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
@@ -499,7 +488,7 @@ export default function App() {
         participantColors={PARTICIPANT_COLORS} participants={participants} />)
 
     const views = {
-      overview:     [wRoster, wMessages, wSentKPI, wToxKPI, wHealth, wSentDist, wTimeSent, wTimeTox, wGauge, wStream],
+      overview:     [wMessages, wSentKPI, wToxKPI, wHealth, wGauge, wSentDist, wTimeSent, wTimeTox, wRoster, wStream],
       sentiment:    [wSentKPI, wSentDist, wTimeSent],
       toxicity:     [wToxKPI, wTimeTox, wGauge],
       participants: [wRoster],
@@ -587,13 +576,7 @@ export default function App() {
                       {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
                     </span>
 
-                    {/* Refresh rate: ri-fetcha il transcript da Arianna se USE_ARIANNA=true.
-                         In modalità mock i dati non cambiano, quindi è visivamente inattivo. */}
-                    <select value={refreshRate} onChange={e => setRefreshRate(Number(e.target.value))}
-                      style={{ ...S.select, opacity: 0.7 }}
-                      title="Aggiornamento automatico (solo con USE_ARIANNA=true sul backend)">
-                      {REFRESH_OPTIONS.map(o => <option key={o.value} value={o.value}>🔄 {o.label}</option>)}
-                    </select>
+
                   </>
                 )}
 
