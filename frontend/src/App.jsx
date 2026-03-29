@@ -900,7 +900,11 @@ export default function App() {
               ))}
             </div>
             <div style={{ padding:'10px 20px', borderTop:'0.5px solid rgba(255,255,255,0.08)', fontSize:12, color:'#636366', textAlign:'center' }}>
-              {Object.values(visibleWidgets).filter(v => v!==false).length} / {Object.keys(visibleWidgets).length} widget attivi
+              {(() => {
+                  const ids = SECTIONS.flatMap(s => s.items.map(i => i.id))
+                  const active = ids.filter(id => visibleWidgets[id] !== false).length
+                  return `${active} / ${ids.length} widget attivi`
+                })()}
             </div>
           </div>
         </div>
