@@ -277,15 +277,19 @@ export default function App() {
     stopClock()
 
     const baseTs = tsToSec(allTranscript[0].created_at)
-    // Partenza dal punto di ingresso
-    const startTs = joinOffset > 0 && allTranscript[joinOffset]
-      ? tsToSec(allTranscript[joinOffset].created_at) - baseTs
-      : 0
-    // meetingCursor: quanti secondi di meeting abbiamo già "visto"
-    let meetingCursor = startTs
+
+    // Partenza: se simOffsetRef è ancora a 0 (primo avvio), usa joinOffset.
+    // Se cambio frameRate a meeting in corso, riprendo esattamente da dove ero.
+    if (simOffsetRef.current === 0) {
+      const startTs = joinOffset > 0 && allTranscript[joinOffset]
+        ? tsToSec(allTranscript[joinOffset].created_at) - baseTs
+        : 0
+      simOffsetRef.current = startTs
+    }
 
     frameTimerRef.current = setInterval(() => {
-      meetingCursor += frameRate
+      simOffsetRef.current += frameRate
+      const meetingCursor = simOffsetRef.current
 
       // Trova l'indice del primo messaggio oltre la finestra corrente
       let nextIdx = allTranscript.findIndex(
@@ -309,6 +313,7 @@ export default function App() {
         stopFrameTimer()
         stopClock()
         setIsPlaying(false)
+        simOffsetRef.current = 0  // reset per prossimo meeting
         const exact = tsToSec(allTranscript[allTranscript.length - 1].created_at) - baseTs
         wallRef.current = exact
         setWallSec(exact)
@@ -569,7 +574,7 @@ export default function App() {
       const color = polarity>=0.3?'#34C759':polarity<=-0.3?'#FF3B30':'#FF9500'
       return (
         <>
-          <div style={{ ...S.kpiVal, color, fontSize:44, fontVariantNumeric:'tabular-nums' }}>
+          <div style={{ ...S.kpiVal, color, fontSize:38, fontVariantNumeric:'tabular-nums' }}>
             {polarity >= 0 ? '+' : ''}{polarity.toFixed(2)}
           </div>
           <div style={{ fontSize:11, color, fontWeight:700, textTransform:'uppercase', marginTop:2 }}>
@@ -593,7 +598,7 @@ export default function App() {
         participantColors={PARTICIPANT_COLORS} participants={participants} />)
 
     const views = {
-      overview:     [wMessages, wHealth, wSentKPI, wToxKPI, wGauge, wSentDist, wTimeSent, wTimeTox, wStream, wRoster],
+      overview:     [wMessages, wHealth, wSentKPI, wToxKPI, wSentDist, wTimeSent, wTimeTox, wStream, wRoster],
       sentiment:    [wSentKPI, wSentDist, wTimeSent],
       toxicity:     [wToxKPI, wTimeTox, wGauge],
       participants: [wRoster],
@@ -927,7 +932,7 @@ function Wgt({ id, title, children, wide, cfg, participants, onCfg, open, setOpe
     <div style={{ background:'rgba(255,255,255,0.05)', borderRadius:16,
       border:'0.5px solid rgba(255,255,255,0.1)', overflow:'hidden',
       ...(wide ? { gridColumn:'1 / -1' } : {}) }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 14px 0' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px 0' }}>
         <span style={{ fontSize:11, fontWeight:600, color:'#8e8e93', textTransform:'uppercase', letterSpacing:'0.5px' }}>{title}</span>
         <button onClick={() => setOpen(isOpen ? null : id)}
           style={{ background:'none', border:'none', color:'#636366', cursor:'pointer', fontSize:16, lineHeight:1 }}>
@@ -944,7 +949,7 @@ function Wgt({ id, title, children, wide, cfg, participants, onCfg, open, setOpe
           </select>
         </div>
       )}
-      <div style={{ padding:'10px 14px 14px' }}>{children}</div>
+      <div style={{ padding:'8px 12px 12px' }}>{children}</div>
     </div>
   )
 }
@@ -960,7 +965,7 @@ function SentimentKPI({ stats }) {
   const avgPct = Math.round((stats.sentiment.average_score||0)*100)
   return (
     <div>
-      <div style={{ fontSize:42, fontWeight:700, color:'#34C759', lineHeight:1 }}>{posPct}%</div>
+      <div style={{ fontSize:36, fontWeight:700, color:'#34C759', lineHeight:1 }}>{posPct}%</div>
       <div style={{ fontSize:12, color:'#8e8e93', marginBottom:12 }}>messaggi positivi</div>
       <div style={{ display:'flex', height:8, borderRadius:4, overflow:'hidden', marginBottom:8 }}>
         <div style={{ width:`${posPct}%`, background:'#34C759', transition:'width 0.4s' }} />
@@ -990,7 +995,7 @@ function ToxicityKPI({ stats }) {
   const color  = pct>20 ? '#FF3B30' : pct>5 ? '#FF9500' : '#34C759'
   return (
     <div>
-      <div style={{ fontSize:42, fontWeight:700, color, lineHeight:1 }}>{toxic_count}</div>
+      <div style={{ fontSize:36, fontWeight:700, color, lineHeight:1 }}>{toxic_count}</div>
       <div style={{ fontSize:12, color:'#8e8e93', marginBottom:12 }}>messaggi tossici su {n} ({pct}%)</div>
       {/* Distribuzione severità: tutti i messaggi categorizzati per score BERT grezzo,
            indipendentemente dalla soglia 0.5. Bassi = score<0.4, Medi = 0.4–0.7, Alti = >0.7 */}
@@ -1208,7 +1213,7 @@ const S = {
   select:  { background:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:8, color:'#fff', padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', outline:'none' },
   btn:     { border:'none', borderRadius:8, padding:'6px 12px', fontSize:13, color:'#fff', cursor:'pointer', background:'#3a3a3c', fontWeight:600, whiteSpace:'nowrap' },
   grid:    { maxWidth:1400, margin:'0 auto', padding:'clamp(0.75rem,3vw,1.25rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
-  kpiVal:  { fontSize:36, fontWeight:700, color:'#fff', lineHeight:1 },
+  kpiVal:  { fontSize:32, fontWeight:700, color:'#fff', lineHeight:1 },
   kpiLab:  { fontSize:11, color:'#8e8e93', marginTop:3 },
   bottomNav:    { position:'fixed', bottom:0, left:0, right:0, zIndex:100, background:'rgba(20,20,22,0.98)', borderTop:'0.5px solid rgba(255,255,255,0.1)', display:'flex', paddingBottom:'env(safe-area-inset-bottom,0px)' },
   bottomNavItem:{ flex:1, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'8px 4px 6px' },
