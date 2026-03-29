@@ -35,6 +35,16 @@ function useMediaQuery(query) {
 
 const PARTICIPANT_COLORS = ['#00C7BE', '#BF5AF2', '#FF9F0A', '#30D158', '#FF375F']
 const SPEEDS   = [1, 2, 5, 10, 20]
+// Framerate: ogni N secondi reali viene rilasciato il prossimo
+// blocco di messaggi (quelli avvenuti in quei N secondi di meeting).
+// Simula il ritardo di elaborazione BERT in produzione.
+const FRAMERATES = [
+  { label: 'Off',  value: 0  },
+  { label: '2s',   value: 2  },
+  { label: '5s',   value: 5  },
+  { label: '10s',  value: 10 },
+  { label: '30s',  value: 30 },
+]
 const NAV_ITEMS = [
   { id: 'overview',     icon: '⊞', label: 'Overview' },
   { id: 'sentiment',    icon: '◎', label: 'Sentiment' },
@@ -98,6 +108,15 @@ export default function App() {
    */
   const [mode,            setMode]           = useState('live')
   const [joinOffset,      setJoinOffset]     = useState(0)
+
+  // Framerate simulation: l'utente sceglie quanti secondi di meeting
+  // vengono "rilasciati" ogni secondo reale. Es: 10 = 10 secondi di meeting/sec.
+  // Il backend viene interrogato con ?simulatedOffset=N per ricevere solo
+  // i messaggi fino al secondo N del meeting. Simula il ritardo BERT reale.
+  const [frameRate,        setFrameRate]      = useState(0)   // 0 = off
+  const [simOffset,        setSimOffset]      = useState(0)   // secondi simulati trascorsi
+  const simOffsetRef = useRef(0)
+  const frameTimerRef = useRef(null)
   const [bertProcessing,  setBertProcessing] = useState(false)
   const [speed, setSpeed] = useState(5)
 
@@ -116,13 +135,21 @@ export default function App() {
   const [toasts,           setToasts]          = useState([])
   const [showJoinBanner,   setShowJoinBanner]  = useState(false)
 
+  const DEFAULT_WIDGETS = {
+    messages:true, sentimentKPI:true, toxicityKPI:true, healthScore:true,
+    sentimentDist:true, timelineSentiment:true, timelineToxicity:true,
+    toxicityGauge:true, participantRoster:true, messageStream:true
+  }
   const [visibleWidgets, setVisibleWidgets] = useState(() => {
-    try { const s = localStorage.getItem('visibleWidgets'); if (s) return JSON.parse(s) } catch {}
-    return {
-      messages:true, sentimentKPI:true, toxicityKPI:true, healthScore:true,
-      sentimentDist:true, timelineSentiment:true, timelineToxicity:true,
-      toxicityGauge:true, participantRoster:true, messageStream:true
-    }
+    try {
+      const s = localStorage.getItem('visibleWidgets')
+      if (s) {
+        const parsed = JSON.parse(s)
+        // Merge with defaults to handle new widgets added after first load
+        return { ...DEFAULT_WIDGETS, ...parsed }
+      }
+    } catch {}
+    return { ...DEFAULT_WIDGETS }
   })
 
   const [widgetConfigs, setWidgetConfigs] = useState({
@@ -150,6 +177,10 @@ export default function App() {
     if (clockRef.current) { clearInterval(clockRef.current); clockRef.current = null }
   }, [])
 
+  const stopFrameTimer = useCallback(() => {
+    if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null }
+  }, [])
+
   const stopTimerRef = useRef(stopTimer)
   const stopClockRef = useRef(stopClock)
   useEffect(() => { stopTimerRef.current = stopTimer }, [stopTimer])
@@ -163,6 +194,7 @@ export default function App() {
       indexRef.current = 0; wallRef.current = 0
       setPlaybackIndex(0); setWallSec(0); setIsPlaying(false)
       setMode('live')
+      setSimOffset(0); simOffsetRef.current = 0
     }
     try {
       const [rP, rM] = await Promise.all([
@@ -229,11 +261,79 @@ export default function App() {
     try { localStorage.setItem('visibleWidgets', JSON.stringify(visibleWidgets)) } catch {}
   }, [visibleWidgets])
 
+  // ── Framerate simulation (intervalli reali) ──────────────────────────────
+  // Con frameRate = N secondi:
+  //   ogni N secondi reali → vengono rilasciati tutti i messaggi del meeting
+  //   avvenuti nei successivi N secondi di tempo del meeting.
+  // Simula il comportamento reale: BERT elabora un blocco, poi lo rilascia.
+  // Con frameRate = 0 → off, usa scheduleNext con gap naturali.
+  useEffect(() => {
+    stopFrameTimer()
+    if (frameRate === 0 || mode !== 'live' || !allTranscript.length) return
+
+    // Ferma il playback continuo di scheduleNext (non serve in frame-mode)
+    stopTimer()
+    stopClock()
+
+    const baseTs = tsToSec(allTranscript[0].created_at)
+    // Partenza dal punto di ingresso
+    const startTs = joinOffset > 0 && allTranscript[joinOffset]
+      ? tsToSec(allTranscript[joinOffset].created_at) - baseTs
+      : 0
+    // meetingCursor: quanti secondi di meeting abbiamo già "visto"
+    let meetingCursor = startTs
+
+    frameTimerRef.current = setInterval(() => {
+      meetingCursor += frameRate
+
+      // Trova l'indice del primo messaggio oltre la finestra corrente
+      let nextIdx = allTranscript.findIndex(
+        m => tsToSec(m.created_at) - baseTs > meetingCursor
+      )
+      if (nextIdx === -1) nextIdx = allTranscript.length
+
+      indexRef.current = nextIdx
+      setPlaybackIndex(nextIdx)
+
+      // Aggiorna il wallClock all'ultimo messaggio rilasciato
+      const lastMsg = allTranscript[nextIdx - 1]
+      if (lastMsg) {
+        const ws = tsToSec(lastMsg.created_at) - baseTs
+        wallRef.current = ws
+        setWallSec(ws)
+      }
+
+      // Meeting concluso — snap timer al valore esatto
+      if (nextIdx >= allTranscript.length) {
+        stopFrameTimer()
+        stopClock()
+        setIsPlaying(false)
+        const exact = tsToSec(allTranscript[allTranscript.length - 1].created_at) - baseTs
+        wallRef.current = exact
+        setWallSec(exact)
+      }
+    }, frameRate * 1000)
+
+    // Avvia subito con il primo batch (messaggi precedenti al join già visibili)
+    setIsPlaying(true)
+
+    return () => stopFrameTimer()
+  }, [frameRate, mode, allTranscript, joinOffset, stopFrameTimer, stopTimer, stopClock])
+
   // ── playback engine ───────────────────────────────────────────────────────
   const scheduleNext = useCallback((idx, transcript, spd, isLive) => {
     if (idx >= transcript.length) {
       setIsPlaying(false)
       setBertProcessing(false)
+      // Snappa il wallClock all'ultimo timestamp esatto (evita scarto finale)
+      if (transcript.length > 0) {
+        const exact = tsToSec(transcript[transcript.length - 1].created_at)
+                    - tsToSec(transcript[0].created_at)
+        wallRef.current = exact
+        setWallSec(exact)
+      }
+      stopTimerRef.current()
+      stopClockRef.current()
       return
     }
 
@@ -271,6 +371,8 @@ export default function App() {
     }, 100)
   }, [stopClock])
 
+
+
   useEffect(() => {
     if (isPlaying && allTranscript.length > 0) {
       if (indexRef.current >= allTranscript.length) {
@@ -283,6 +385,8 @@ export default function App() {
         setWallSec(wallRef.current)
       }
       const isLive = mode === 'live'
+      // In live mode il framerate a intervalli è gestito dall'useEffect separato.
+      // scheduleNext in live usa sempre velocità 1× (gap reali + ritardo BERT).
       const effectiveSpeed = isLive ? 1 : speed
       scheduleNext(indexRef.current, allTranscript, effectiveSpeed, isLive)
       startClock(effectiveSpeed)
@@ -396,7 +500,7 @@ export default function App() {
     }
   }
 
-  const toggleWidget       = id => setVisibleWidgets(p => ({ ...p, [id]: p[id] === false }))
+  const toggleWidget       = id => setVisibleWidgets(p => ({ ...p, [id]: !(p[id] !== false) }))
   const updateWidgetConfig = (id,u) => setWidgetConfigs(p => ({ ...p, [id]:{ ...p[id], ...u } }))
 
   const getFiltered = id => {
@@ -479,7 +583,7 @@ export default function App() {
       <TimelineChart messages={F('timelineSentiment')} metric="sentiment" color="#00C7BE" yLabel="Sentiment score (0–100%)" />)
     const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — ogni punto = un messaggio',true,
       <TimelineChart messages={F('timelineToxicity')} metric="toxicity"  color="#FF6B6B" yLabel="Toxicity score (0–100%)" />)
-    const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',true,
+    const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',!isMobile,
       <ToxicityGauge score={S_id('toxicityGauge').toxicity.toxic_ratio} />)
     const wRoster     = wgt('participantRoster','Partecipanti',true,
       <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
@@ -488,7 +592,7 @@ export default function App() {
         participantColors={PARTICIPANT_COLORS} participants={participants} />)
 
     const views = {
-      overview:     [wMessages, wSentKPI, wToxKPI, wHealth, wGauge, wSentDist, wTimeSent, wTimeTox, wRoster, wStream],
+      overview:     [wMessages, wSentKPI, wToxKPI, wHealth, wGauge, wSentDist, wTimeSent, wTimeTox, wStream, wRoster],
       sentiment:    [wSentKPI, wSentDist, wTimeSent],
       toxicity:     [wToxKPI, wTimeTox, wGauge],
       participants: [wRoster],
@@ -548,7 +652,7 @@ export default function App() {
                   <h1 style={S.title}>Meeting Intelligence</h1>
                   <p style={S.subtitle}>{selectedMeeting.toUpperCase()}</p>
                 </div>
-                {meetingList.length > 0 && (
+                {meetingList.length > 1 && (
                   <select value={selectedMeeting} onChange={e => setSelectedMeeting(e.target.value)} style={S.select}>
                     {meetingList.map(m => (
                       <option key={m.id} value={m.id}>
@@ -562,7 +666,7 @@ export default function App() {
               <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
 
                 {/* ── LIVE ────────────────────────────────────────────── */}
-                {mode === 'live' && (
+                {mode === 'live' && !liveEnded && (
                   <>
                     <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
                       background:'rgba(255,59,48,0.15)', border:'0.5px solid rgba(255,59,48,0.4)',
@@ -576,8 +680,24 @@ export default function App() {
                       {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
                     </span>
 
+                    {/* Selettore framerate: 0=real-time, N=N× accelerato */}
+                    <select value={frameRate}
+                      onChange={e => setFrameRate(Number(e.target.value))}
+                      style={S.select}
+                      title="Velocità di avanzamento del meeting (0=tempo reale)">
+                      {FRAMERATES.map(o => <option key={o.value} value={o.value}>⚡ {o.label}</option>)}
+                    </select>
 
                   </>
+                )}
+
+                {/* Badge CONCLUSO — sostituisce IN DIRETTA a fine live */}
+                {liveEnded && (
+                  <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
+                    background:'rgba(52,199,89,0.15)', border:'0.5px solid rgba(52,199,89,0.4)',
+                    borderRadius:8 }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:'#34C759' }}>✓ CONCLUSO</span>
+                  </div>
                 )}
 
                 {/* ── REVIEW ──────────────────────────────────────────── */}
@@ -714,7 +834,7 @@ export default function App() {
 
           {/* Widget grid */}
           {!loading && liveTranscript.length > 0 && (
-            <div style={{ ...S.grid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            <div style={{ ...S.grid, gridTemplateColumns: isMobile ? 'repeat(2, minmax(140px, 1fr))' : 'repeat(auto-fill, minmax(280px, 1fr))' }}>
               {activeView !== 'overview' && (
                 <div style={{ gridColumn:'1/-1', fontSize:18, fontWeight:700, color:'#fff', padding:'4px 0 8px', display:'flex', alignItems:'center', gap:8 }}>
                   {NAV_ITEMS.find(n => n.id===activeView)?.icon}{' '}
@@ -801,7 +921,7 @@ function Wgt({ id, title, children, wide, cfg, participants, onCfg, open, setOpe
   return (
     <div style={{ background:'rgba(255,255,255,0.05)', borderRadius:16,
       border:'0.5px solid rgba(255,255,255,0.1)', overflow:'hidden',
-      ...(wide ? { gridColumn:'1 / -1' } : {}) }}>
+      ...(wide ? { gridColumn:'1 / -1' } : { minHeight:160 }) }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 14px 0' }}>
         <span style={{ fontSize:11, fontWeight:600, color:'#8e8e93', textTransform:'uppercase', letterSpacing:'0.5px' }}>{title}</span>
         <button onClick={() => setOpen(isOpen ? null : id)}
