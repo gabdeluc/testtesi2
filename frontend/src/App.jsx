@@ -77,6 +77,7 @@ const Toast = ({ message, type, onClose }) => {
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const isMobile = useMediaQuery(`(max-width: ${MOBILE_BP}px)`)
+  const isSmall  = useMediaQuery('(max-width: 480px)')
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [allTranscript, setAllTranscript] = useState([])
@@ -592,7 +593,7 @@ export default function App() {
         participantColors={PARTICIPANT_COLORS} participants={participants} />)
 
     const views = {
-      overview:     [wMessages, wSentKPI, wToxKPI, wHealth, wGauge, wSentDist, wTimeSent, wTimeTox, wStream, wRoster],
+      overview:     [wMessages, wHealth, wSentKPI, wToxKPI, wGauge, wSentDist, wTimeSent, wTimeTox, wStream, wRoster],
       sentiment:    [wSentKPI, wSentDist, wTimeSent],
       toxicity:     [wToxKPI, wTimeTox, wGauge],
       participants: [wRoster],
@@ -834,7 +835,7 @@ export default function App() {
 
           {/* Widget grid */}
           {!loading && liveTranscript.length > 0 && (
-            <div style={{ ...S.grid, gridTemplateColumns: isMobile ? 'repeat(2, minmax(140px, 1fr))' : 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            <div style={{ ...S.grid, gridTemplateColumns: isSmall ? '1fr' : isMobile ? 'repeat(2, minmax(140px, 1fr))' : 'repeat(auto-fill, minmax(280px, 1fr))' }}>
               {activeView !== 'overview' && (
                 <div style={{ gridColumn:'1/-1', fontSize:18, fontWeight:700, color:'#fff', padding:'4px 0 8px', display:'flex', alignItems:'center', gap:8 }}>
                   {NAV_ITEMS.find(n => n.id===activeView)?.icon}{' '}
@@ -921,7 +922,7 @@ function Wgt({ id, title, children, wide, cfg, participants, onCfg, open, setOpe
   return (
     <div style={{ background:'rgba(255,255,255,0.05)', borderRadius:16,
       border:'0.5px solid rgba(255,255,255,0.1)', overflow:'hidden',
-      ...(wide ? { gridColumn:'1 / -1' } : { minHeight:160 }) }}>
+      ...(wide ? { gridColumn:'1 / -1' } : {}) }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 14px 0' }}>
         <span style={{ fontSize:11, fontWeight:600, color:'#8e8e93', textTransform:'uppercase', letterSpacing:'0.5px' }}>{title}</span>
         <button onClick={() => setOpen(isOpen ? null : id)}
