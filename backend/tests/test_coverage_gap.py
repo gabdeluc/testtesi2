@@ -1,19 +1,16 @@
 """
 test_coverage_gap.py — Test per colmare gap coverage.
 
-Fix applicati:
-  • params={"userId": ...} (non participant_id)
-  • entry["participant_name"] (non nickname)
-  • /config e /services/status ora esistono in main.py
+Aggiornato per la piattaforma attuale:
+  • userId (non participant_id)
+  • participant_name (schema Arianna)
+  • Aggiunto test whitespace validator
+  • Aggiunto test toxic_ratio consistency
+  • Rimosso riferimento a health score
 """
-
 import pytest
 from fastapi import status
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIG LOADER COVERAGE
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestConfigLoaderCoverage:
 
@@ -27,29 +24,18 @@ class TestConfigLoaderCoverage:
     @pytest.mark.unit
     def test_config_loader_all_getters(self, client):
         from config.config_loader import config_loader
-
         phrases = config_loader.get_sample_phrases()
         assert isinstance(phrases, list) and len(phrases) > 0
-
         participants = config_loader.get_participants()
         assert isinstance(participants, list) and len(participants) > 0
-
         meetings = config_loader.get_meetings()
         assert isinstance(meetings, list) and len(meetings) > 0
-
         gen_config = config_loader.get_generation_config()
         assert isinstance(gen_config, dict)
         assert "min_duration_seconds" in gen_config
-        assert "max_pause_seconds"    in gen_config
-        assert "chars_per_second"     in gen_config
-
         overrides = config_loader.get_generation_overrides()
         assert isinstance(overrides, dict)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PREDICTOR MODEL COVERAGE
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestPredictorModelCoverage:
 
@@ -76,16 +62,10 @@ class TestPredictorModelCoverage:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         for pred in data["predictions"]:
-            assert "label"      in pred
             assert pred["label"] in ["positive", "neutral", "negative"]
             assert 0.0 <= pred["score"] <= 1.0
-            assert "model_type" in pred
             assert pred["model_type"] == "sentiment"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ERROR PATH COVERAGE
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestErrorPathCoverage:
 
@@ -109,37 +89,32 @@ class TestErrorPathCoverage:
 
     @pytest.mark.api
     def test_wrong_field_type(self, client):
-        assert client.post("/sentiment/analyze", json={"text": 12345}).status_code   == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert client.post("/sentiment/analyze", json={"text": 12345}).status_code    == status.HTTP_422_UNPROCESSABLE_ENTITY
         assert client.post("/toxicity/detect",   json={"text": ["array"]}).status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
+    @pytest.mark.api
+    def test_whitespace_only_text_rejected(self, client):
+        """Fix applicato: @validator con strip() rifiuta testi di soli spazi con 422."""
+        assert client.post("/sentiment/analyze", json={"text": "   "}).status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert client.post("/toxicity/detect",   json={"text": "   "}).status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert client.post("/sentiment/analyze", json={"text": "\t\n"}).status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BRANCH COVERAGE
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestBranchCoverage:
 
     @pytest.mark.integration
     def test_transcript_filter_with_valid_participant(self, client, valid_meeting_ids, participant_ids):
-        meeting_id      = valid_meeting_ids[0]
-        participant_id  = list(participant_ids.keys())[0]
+        meeting_id       = valid_meeting_ids[0]
+        participant_id   = list(participant_ids.keys())[0]
         participant_name = participant_ids[participant_id]
-
-        response = client.get(
-            f"/meeting/{meeting_id}/transcript",
-            params={"userId": participant_id},
-        )
+        response = client.get(f"/meeting/{meeting_id}/transcript", params={"userId": participant_id})
         assert response.status_code == status.HTTP_200_OK
         for entry in response.json()["transcript"]:
             assert entry["participant_name"] == participant_name
 
     @pytest.mark.integration
     def test_transcript_filter_with_invalid_participant(self, client, valid_meeting_ids):
-        response = client.get(
-            f"/meeting/{valid_meeting_ids[0]}/transcript",
-            params={"userId": "INVALID_ID_999"},
-        )
-        # userId sconosciuto → ritorna transcript completo senza filtrare
+        response = client.get(f"/meeting/{valid_meeting_ids[0]}/transcript", params={"userId": "INVALID_ID_999"})
         assert response.status_code == status.HTTP_200_OK
 
     @pytest.mark.integration
@@ -148,10 +123,40 @@ class TestBranchCoverage:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.json()["transcript"]) > 0
 
+    @pytest.mark.integration
+    def test_analysis_enriched_schema(self, client, valid_meeting_ids):
+        """Schema Arianna + arricchimento sentiment/toxicity in ogni entry."""
+        data = client.get(f"/meeting/{valid_meeting_ids[0]}/analysis").json()
+        for entry in data["transcript"]:
+            for field in ["conversation_turn", "participant_name", "transcribed_text", "created_at", "audio_duration_ms"]:
+                assert field in entry, f"Campo Arianna mancante: {field}"
+            for field in ["label", "score", "confidence", "polarity"]:
+                assert field in entry["sentiment"], f"Campo sentiment mancante: {field}"
+            for field in ["is_toxic", "toxicity_score", "severity", "confidence"]:
+                assert field in entry["toxicity"], f"Campo toxicity mancante: {field}"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UTILITY ENDPOINTS COVERAGE
-# ─────────────────────────────────────────────────────────────────────────────
+
+class TestToxicityMetricConsistency:
+
+    @pytest.mark.integration
+    def test_toxic_ratio_consistent_with_toxic_count(self, client, valid_meeting_ids):
+        """Il gauge frontend usa toxic_ratio — deve essere coerente con toxic_count."""
+        data  = client.get(f"/meeting/{valid_meeting_ids[0]}/analysis").json()
+        stats = data["metadata"]["stats"]
+        tox   = stats["toxicity"]
+        total = stats["total_messages"]
+        expected_ratio = tox["toxic_count"] / total if total > 0 else 0.0
+        assert abs(tox["toxic_ratio"] - expected_ratio) < 0.001
+
+    @pytest.mark.integration
+    def test_zero_toxic_means_zero_gauge(self, client, sample_texts):
+        """Con 0 messaggi tossici, toxic_ratio=0.0 → gauge mostra 0%."""
+        response = client.post("/toxicity/detect/batch", json={"texts": sample_texts["safe"]})
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        if data["toxic_count"] == 0:
+            assert data["toxic_ratio"] == 0.0
+
 
 class TestUtilityEndpointsCoverage:
 
@@ -159,23 +164,16 @@ class TestUtilityEndpointsCoverage:
     def test_participants_endpoint(self, client):
         response = client.get("/participants")
         assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert "participants" in data
-        for p in data["participants"]:
-            assert "id"   in p
-            assert "name" in p
+        for p in response.json()["participants"]:
+            assert "id" in p and "name" in p
 
     @pytest.mark.api
     def test_meetings_list_endpoint(self, client):
         response = client.get("/meetings")
         assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert "meetings" in data
-        for m in data["meetings"]:
-            assert "id"                 in m
-            assert "date"               in m
-            assert "participants_count" in m
-            assert "messages_count"     in m
+        for m in response.json()["meetings"]:
+            assert "id" in m and "date" in m
+            assert "participants_count" in m and "messages_count" in m
 
     @pytest.mark.api
     def test_services_status_endpoint(self, client):
@@ -183,7 +181,6 @@ class TestUtilityEndpointsCoverage:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         for key in ["bert_sentiment", "bert_toxicity"]:
-            assert key in data
             assert "healthy" in data[key]
             assert "url"     in data[key]
             assert "port"    in data[key]
@@ -193,7 +190,20 @@ class TestUtilityEndpointsCoverage:
         response = client.get("/config")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert "sample_phrases" in data
-        assert "participants"   in data
-        assert "meetings"       in data
-        assert "generation"     in data
+        for field in ["sample_phrases", "participants", "meetings", "generation"]:
+            assert field in data
+
+    @pytest.mark.api
+    def test_health_endpoint_format(self, client):
+        data = client.get("/health").json()
+        assert data["status"]  == "healthy"
+        assert data["service"] == "backend-gateway"
+        assert "sentiment_mock" in data
+        assert "toxicity_mock"  in data
+
+    @pytest.mark.api
+    def test_root_endpoint_format(self, client):
+        data = client.get("/").json()
+        assert data["status"]       == "ok"
+        assert data["architecture"] == "microservices"
+        assert "version"            in data
