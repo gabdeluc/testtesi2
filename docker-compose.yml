@@ -15,9 +15,19 @@ services:
       - PYTHONUNBUFFERED=1
       - BERT_SERVICE_URL=http://bert-sentiment:5001
       - TOXICITY_SERVICE_URL=http://bert-toxicity:5003
+      # In produzione sostituire con il dominio specifico del frontend
+      - CORS_ORIGINS=*
     depends_on:
-      - bert-sentiment
-      - bert-toxicity
+      bert-sentiment:
+        condition: service_healthy
+      bert-toxicity:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - ml-network
@@ -36,6 +46,13 @@ services:
       - PYTHONUNBUFFERED=1
       - TRANSFORMERS_CACHE=/app/.cache/transformers
       - MODEL_NAME=nlptown/bert-base-multilingual-uncased-sentiment
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      # start_period lungo perché il modello può impiegare minuti al primo avvio
+      start_period: 180s
     restart: unless-stopped
     networks:
       - ml-network
@@ -44,9 +61,6 @@ services:
         limits:
           memory: 2G
 
-  # ============================================
-  # E5 EMBEDDINGS MICROSERVICE
-  # ============================================
   # ============================================
   # BERT TOXICITY MICROSERVICE
   # ============================================
@@ -61,6 +75,12 @@ services:
       - PYTHONUNBUFFERED=1
       - TRANSFORMERS_CACHE=/app/.cache/transformers
       - MODEL_NAME=gravitee-io/bert-small-toxicity
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
     restart: unless-stopped
     networks:
       - ml-network
@@ -81,7 +101,14 @@ services:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     networks:
       - ml-network

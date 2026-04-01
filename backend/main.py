@@ -43,6 +43,9 @@ TOXICITY_SERVICE_URL  = os.getenv("TOXICITY_SERVICE_URL",  "http://bert-toxicity
 USE_ARIANNA      = os.getenv("USE_ARIANNA",      "false").lower() == "true"
 ARIANNA_BASE_URL = os.getenv("ARIANNA_BASE_URL", "http://arianna-host:3000")
 
+# CORS_ORIGINS: in produzione impostare la variabile d'ambiente con il dominio
+# specifico del frontend (es. "https://meeting-intelligence.example.com").
+# Il default "*" è accettabile solo in sviluppo locale.
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -421,9 +424,14 @@ def generate_mock_transcript(
     transcript = []
     offset_sec = 0
 
+    # Campionamento senza ripetizione delle frasi (se possibile) per maggior realismo
+    phrases_pool = SAMPLE_PHRASES.copy()
+    rng.shuffle(phrases_pool)
+    phrase_cycle = (phrases_pool * ((num_entries // len(phrases_pool)) + 1))[:num_entries]
+
     for i in range(num_entries):
         participant  = rng.choice(PARTICIPANTS)
-        text         = rng.choice(SAMPLE_PHRASES)
+        text         = phrase_cycle[i]
         duration_sec = max(min_duration, len(text) // chars_per_sec)
         duration_ms  = duration_sec * 1000
 
@@ -526,16 +534,30 @@ def _get_transcript(meeting_id: str) -> List[TranscriptEntry]:
 
 
 async def fetch_transcript_from_arianna(room_id: str, **params) -> List[TranscriptEntry]:
-    # httpx non filtra i None — mandarli ad Arianna causerebbe query string come
-    # "userId=None&startTime=None" che rompe il filtraggio. Filtriamo prima.
+    # httpx non filtra i None — filtriamo prima per evitare "userId=None" nella query string
     clean_params = {k: v for k, v in params.items() if v is not None and v is not False}
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(
-            f"{ARIANNA_BASE_URL}/api/rooms/{room_id}/transcriptions",
-            params=clean_params,
-        )
-        r.raise_for_status()
-        raw = r.json().get("transcriptions", [])
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=25.0, write=5.0, pool=5.0)) as client:
+            r = await client.get(
+                f"{ARIANNA_BASE_URL}/api/rooms/{room_id}/transcriptions",
+                params=clean_params,
+            )
+            r.raise_for_status()
+            body = r.json()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=http_status.HTTP_504_GATEWAY_TIMEOUT,
+                            detail=f"Arianna non risponde (timeout) per la stanza {room_id}")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code,
+                            detail=f"Arianna ha restituito errore {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY,
+                            detail=f"Errore di comunicazione con Arianna: {str(e)}")
+
+    if not isinstance(body, dict) or "transcriptions" not in body:
+        raise HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY,
+                            detail="Risposta Arianna in formato non atteso")
+    raw = body.get("transcriptions", [])
     return [
         TranscriptEntry(
             conversation_turn = e["conversation_turn"],

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Bar, Line, Doughnut } from 'react-chartjs-2'
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement,
@@ -196,6 +196,7 @@ export default function App() {
       setPlaybackIndex(0); setWallSec(0); setIsPlaying(false)
       setMode('live')
       setSimOffset(0); simOffsetRef.current = 0
+      setShowJoinBanner(false)
     }
     try {
       const [rP, rM] = await Promise.all([
@@ -329,17 +330,16 @@ export default function App() {
   // ── playback engine ───────────────────────────────────────────────────────
   const scheduleNext = useCallback((idx, transcript, spd, isLive) => {
     if (idx >= transcript.length) {
-      setIsPlaying(false)
       setBertProcessing(false)
-      // Snappa il wallClock all'ultimo timestamp esatto (evita scarto finale)
+      // Snappa il wallClock all'ultimo timestamp esatto prima di fermare tutto
       if (transcript.length > 0) {
         const exact = tsToSec(transcript[transcript.length - 1].created_at)
                     - tsToSec(transcript[0].created_at)
         wallRef.current = exact
         setWallSec(exact)
       }
-      stopTimerRef.current()
-      stopClockRef.current()
+      // stopClock tramite isPlaying → useEffect
+      setIsPlaying(false)
       return
     }
 
@@ -378,6 +378,19 @@ export default function App() {
   }, [stopClock])
 
 
+
+  // Ferma il clock quando la pagina va in background (risparmio batteria mobile)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopClock()
+      } else if (isPlaying) {
+        startClock(mode === 'live' ? (frameRate > 0 ? 1 : 1) : speed)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [isPlaying, mode, speed, frameRate, stopClock, startClock])
 
   useEffect(() => {
     if (isPlaying && allTranscript.length > 0) {
@@ -429,7 +442,8 @@ export default function App() {
 
   // ── export (solo a meeting finito) ────────────────────────────────────────
   const exportJSON = () => {
-    const data = { meeting_id:selectedMeeting, transcript:allTranscript, stats:calcStats(allTranscript) }
+    const exportData = mode === 'review' ? allTranscript : allTranscript
+    const data = { meeting_id:selectedMeeting, exported_at:new Date().toISOString(), mode, join_offset:joinOffset, transcript:exportData, stats:calcStats(exportData) }
     const blob  = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' })
     const a     = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(blob),
@@ -440,7 +454,8 @@ export default function App() {
   }
 
   const exportCSV = () => {
-    const rows = allTranscript.map(m =>
+    const exportData = allTranscript
+    const rows = exportData.map(m =>
       `${m.conversation_turn},"${m.participant_name}","${m.transcribed_text.replace(/"/g,'""')}",${m.sentiment.label},${Math.round(m.sentiment.score*100)}%,${m.toxicity.is_toxic},${m.toxicity.severity},${m.created_at}`
     )
     const blob = new Blob(
@@ -506,7 +521,7 @@ export default function App() {
     }
   }
 
-  const toggleWidget       = id => setVisibleWidgets(p => ({ ...p, [id]: !(p[id] !== false) }))
+  const toggleWidget       = id => setVisibleWidgets(p => ({ ...p, [id]: !p[id] }))
   const updateWidgetConfig = (id,u) => setWidgetConfigs(p => ({ ...p, [id]:{ ...p[id], ...u } }))
 
   const getFiltered = id => {
@@ -518,10 +533,7 @@ export default function App() {
   const F    = id  => getFiltered(id)
   const S_id = id  => calcStats(F(id))
 
-  const getParticipantStats = () =>
-    participants.map(p => ({
-      ...p, stats: calcStats(liveTranscript.filter(e => e.participant_name === p.name))
-    }))
+  const getParticipantStats = () => memoParticipantStats
 
   // Sentiment Polarity Index: metrica standard in letteratura sentiment analysis.
   // Range [-1, +1]: -1 = tutto negativo, 0 = bilanciato, +1 = tutto positivo.
@@ -531,6 +543,16 @@ export default function App() {
     const { positive, negative } = stats.sentiment.distribution
     return ((positive - negative) / stats.total_messages)
   }
+
+  // ── statistiche memoizzate — ricalcolate solo quando liveTranscript cambia ──
+  const memoStats = useMemo(() => calcStats(liveTranscript), [liveTranscript])
+  const memoParticipantStats = useMemo(
+    () => participants.map(p => ({
+      ...p,
+      stats: calcStats(liveTranscript.filter(e => e.participant_name === p.name))
+    })),
+    [liveTranscript, participants]
+  )
 
   // ── widget sections ───────────────────────────────────────────────────────
   const SECTIONS = [
@@ -1215,6 +1237,6 @@ const S = {
   grid:    { maxWidth:1400, margin:'0 auto', padding:'clamp(0.75rem,3vw,1.25rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
   kpiVal:  { fontSize:32, fontWeight:700, color:'#fff', lineHeight:1 },
   kpiLab:  { fontSize:11, color:'#8e8e93', marginTop:3 },
-  bottomNav:    { position:'fixed', bottom:0, left:0, right:0, zIndex:100, background:'rgba(20,20,22,0.98)', borderTop:'0.5px solid rgba(255,255,255,0.1)', display:'flex', paddingBottom:'env(safe-area-inset-bottom,0px)' },
+  bottomNav:    { position:'fixed', bottom:0, left:0, right:0, zIndex:100, background:'rgba(20,20,22,0.98)', borderTop:'0.5px solid rgba(255,255,255,0.1)', display:'flex', paddingBottom:'max(env(safe-area-inset-bottom, 0px), 8px)' },
   bottomNavItem:{ flex:1, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'8px 4px 6px' },
 }
