@@ -607,9 +607,9 @@ export default function App() {
       )
     })())
     const wSentDist   = wgt('sentimentDist','Distribuzione Sentiment',true,  <SentimentDistChart stats={S_id('sentimentDist')} />)
-    const wTimeSent   = wgt('timelineSentiment','Timeline Sentiment — ogni punto = un messaggio',true,
+    const wTimeSent   = wgt('timelineSentiment','Timeline Sentiment — tocca un punto per vedere il messaggio',true,
       <TimelineChart messages={F('timelineSentiment')} metric="sentiment" color="#00C7BE" yLabel="Sentiment score (0–100%)" />)
-    const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — ogni punto = un messaggio',true,
+    const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — tocca un punto per vedere il messaggio',true,
       <TimelineChart messages={F('timelineToxicity')} metric="toxicity"  color="#FF6B6B" yLabel="Toxicity score (0–100%)" />)
     const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',!isMobile,
       <ToxicityGauge score={S_id('toxicityGauge').toxicity.toxic_ratio} />)
@@ -1090,16 +1090,51 @@ function TimelineChart({ messages, metric, color, yLabel }) {
         data={{ labels:xLbls, datasets:[{
           label: metric==='sentiment' ? 'Sentiment score (%)' : 'Toxicity score (%)',
           data: pts.map(p=>p.y), borderColor:color, backgroundColor:color+'20', borderWidth:1.5,
-          pointRadius:4, pointHoverRadius:7, pointBackgroundColor:ptColors,
+          pointRadius:5, pointHoverRadius:10, pointHoverBorderWidth:2, pointHoverBorderColor:'#fff', pointBackgroundColor:ptColors, hitRadius:20,
           fill:true, tension:0.1
         }]}}
         options={{ responsive:true, maintainAspectRatio:false, animation:{ duration:150 },
+          // interaction.mode 'nearest' + eventi touch abilitano il tooltip su mobile
+          // (il tap sul punto mostra il tooltip, il tap fuori lo nasconde)
+          interaction:{ mode:'nearest', axis:'x', intersect:false },
+          events:['mousemove','mouseout','click','touchstart','touchmove','touchend'],
           plugins:{ legend:{ display:false },
-            tooltip:{ backgroundColor:'rgba(28,28,30,0.95)', callbacks:{
-              title: items=>`${pts[items[0].dataIndex].lbl} · ${pts[items[0].dataIndex].nick}`,
-              label: ctx  =>`${ctx.parsed.y}% — ${pts[ctx.dataIndex].label}`,
-              afterLabel: ctx=>{ const t=pts[ctx.dataIndex].text; return t.length>60?t.slice(0,60)+'…':t }
-            }}},
+            tooltip:{
+              backgroundColor:'rgba(28,28,30,0.97)',
+              padding:12,
+              cornerRadius:10,
+              titleFont:{ size:12, weight:'bold' },
+              bodyFont:{ size:12 },
+              displayColors: true,
+              callbacks:{
+                title: items => {
+                  const p = pts[items[0].dataIndex]
+                  return `${p.lbl}  ·  ${p.nick}`
+                },
+                label: ctx => {
+                  const p = pts[ctx.dataIndex]
+                  const scoreLabel = `Score: ${ctx.parsed.y}%`
+                  const catLabel   = metric === 'sentiment'
+                    ? `Sentiment: ${p.label}`
+                    : `Severity: ${p.label}`
+                  return [scoreLabel, catLabel]
+                },
+                afterBody: ctx => {
+                  const t = pts[ctx[0].dataIndex].text
+                  // Spezza il testo in righe da max 45 char per leggibilità mobile
+                  const words = t.split(' ')
+                  const lines = []
+                  let line = ''
+                  for (const w of words) {
+                    if ((line + w).length > 45 && line) { lines.push(line.trim()); line = '' }
+                    line += w + ' '
+                  }
+                  if (line.trim()) lines.push(line.trim())
+                  return ['', ...lines.slice(0, 4), lines.length > 4 ? '…' : '']
+                }
+              }
+            }
+          },
           scales:{
             x:{ grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93', maxRotation:0 },
               title:{ display:true, text:'Minuti dall\'inizio del meeting', color:'#636366', font:{ size:10 } } },
