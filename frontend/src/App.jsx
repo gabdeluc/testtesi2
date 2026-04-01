@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Bar, Line, Doughnut } from 'react-chartjs-2'
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement,
@@ -1067,81 +1067,128 @@ function SentimentDistChart({ stats }) {
 // ─── TimelineChart ────────────────────────────────────────────────────────────
 function TimelineChart({ messages, metric, color, yLabel }) {
   if (!messages?.length) return <Empty />
+
+  const [tooltip, setTooltip] = React.useState(null) // { x, y, idx } | null
+  const chartRef = React.useRef(null)
+
   const base = new Date(messages[0].created_at).getTime()
   const fmt  = ts => {
-    const s = Math.max(0,(new Date(ts).getTime()-base)/1000)
+    const s = Math.max(0, (new Date(ts).getTime() - base) / 1000)
     return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`
   }
   const pts = messages.map(m => ({
-    y: Math.round((metric==='sentiment' ? m.sentiment.score : m.toxicity.toxicity_score)*100),
-    lbl:fmt(m.created_at), nick:m.participant_name, text:m.transcribed_text,
-    label: metric==='sentiment' ? m.sentiment.label : m.toxicity.severity
+    y: Math.round((metric === 'sentiment' ? m.sentiment.score : m.toxicity.toxicity_score) * 100),
+    lbl: fmt(m.created_at),
+    nick: m.participant_name,
+    text: m.transcribed_text,
+    label: metric === 'sentiment' ? m.sentiment.label : m.toxicity.severity
   }))
-  const step  = Math.max(1,Math.floor(messages.length/8))
-  const xLbls = pts.map((p,i) => (i===0||i===pts.length-1||i%step===0) ? p.lbl : '')
+  const step  = Math.max(1, Math.floor(messages.length / 8))
+  const xLbls = pts.map((p, i) => (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : '')
   const ptColors = pts.map(p =>
-    metric==='sentiment'
-      ? (p.label==='positive'?'#34C759':p.label==='negative'?'#FF3B30':'#FFCC00')
-      : (p.label==='high'?'#FF3B30':p.label==='medium'?'#FF9500':'#34C759')
+    metric === 'sentiment'
+      ? (p.label === 'positive' ? '#34C759' : p.label === 'negative' ? '#FF3B30' : '#FFCC00')
+      : (p.label === 'high' ? '#FF3B30' : p.label === 'medium' ? '#FF9500' : '#34C759')
   )
+
+  const handleChartClick = (event) => {
+    const chart = chartRef.current
+    if (!chart) return
+    const elements = chart.getElementsAtEventForMode(event.nativeEvent, 'nearest', { intersect: false, axis: 'x' }, false)
+    if (!elements.length) { setTooltip(null); return }
+    const el  = elements[0]
+    const idx = el.index
+    const pt  = pts[idx]
+    // posizione relativa al contenitore del grafico
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ex   = event.nativeEvent.clientX ?? (event.nativeEvent.touches?.[0]?.clientX ?? 0)
+    const ey   = event.nativeEvent.clientY ?? (event.nativeEvent.touches?.[0]?.clientY ?? 0)
+    const rx   = ex - rect.left
+    const ry   = ey - rect.top
+    // Se stesso punto → chiudi
+    if (tooltip && tooltip.idx === idx) { setTooltip(null); return }
+    setTooltip({ x: rx, y: ry, idx, pt })
+  }
+
+  const tp = tooltip ? tooltip.pt : null
+  const labelColor = tp
+    ? (metric === 'sentiment'
+        ? (tp.label === 'positive' ? '#34C759' : tp.label === 'negative' ? '#FF3B30' : '#FFCC00')
+        : (tp.label === 'high' ? '#FF3B30' : tp.label === 'medium' ? '#FF9500' : '#34C759'))
+    : '#fff'
+
   return (
-    <div style={{ height:280 }}>
+    <div style={{ height: 280, position: 'relative' }}
+      onClick={handleChartClick}
+      onTouchEnd={handleChartClick}>
+
+      {/* Tooltip custom — posizionato sopra il punto, mai sovrapposto al prossimo */}
+      {tooltip && tp && (() => {
+        const TW = 220  // larghezza tooltip
+        const containerW = 500 // stima, il posizionamento viene clampato
+        // Posiziona a sinistra o destra del punto per non coprire i punti adiacenti
+        const leftPos = tooltip.x > containerW / 2
+          ? Math.max(0, tooltip.x - TW - 12)  // va a sinistra del punto
+          : tooltip.x + 12                     // va a destra del punto
+        // Sempre sopra il punto
+        const topPos = Math.max(0, tooltip.y - 130)
+        return (
+          <div style={{
+            position: 'absolute', top: topPos, left: leftPos,
+            width: TW, zIndex: 20, pointerEvents: 'none',
+            background: 'rgba(28,28,30,0.97)', borderRadius: 12,
+            border: `1px solid ${labelColor}40`, padding: '10px 12px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          }}>
+            {/* Header: timestamp + partecipante */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: '#8e8e93', fontVariantNumeric: 'tabular-nums' }}>{tp.lbl}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>{tp.nick}</span>
+            </div>
+            {/* Score + label */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: labelColor }}>{tp.y}%</span>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
+                background: labelColor + '22', color: labelColor, textTransform: 'uppercase' }}>
+                {tp.label}
+              </span>
+            </div>
+            {/* Testo del messaggio */}
+            <div style={{ fontSize: 11, color: '#ebebf5cc', lineHeight: 1.5,
+              borderTop: '0.5px solid rgba(255,255,255,0.08)', paddingTop: 8 }}>
+              {tp.text.length > 120 ? tp.text.slice(0, 120) + '…' : tp.text}
+            </div>
+          </div>
+        )
+      })()}
+
       <Line
-        data={{ labels:xLbls, datasets:[{
-          label: metric==='sentiment' ? 'Sentiment score (%)' : 'Toxicity score (%)',
-          data: pts.map(p=>p.y), borderColor:color, backgroundColor:color+'20', borderWidth:1.5,
-          pointRadius:5, pointHoverRadius:10, pointHoverBorderWidth:2, pointHoverBorderColor:'#fff', pointBackgroundColor:ptColors, hitRadius:20,
-          fill:true, tension:0.1
+        ref={chartRef}
+        data={{ labels: xLbls, datasets: [{
+          label: metric === 'sentiment' ? 'Sentiment score (%)' : 'Toxicity score (%)',
+          data: pts.map(p => p.y),
+          borderColor: color, backgroundColor: color + '20', borderWidth: 1.5,
+          pointRadius: 5, pointHoverRadius: 9,
+          pointHoverBorderWidth: 2, pointHoverBorderColor: '#fff',
+          pointBackgroundColor: ptColors,
+          fill: true, tension: 0.1
         }]}}
-        options={{ responsive:true, maintainAspectRatio:false, animation:{ duration:150 },
-          // interaction.mode 'nearest' + eventi touch abilitano il tooltip su mobile
-          // (il tap sul punto mostra il tooltip, il tap fuori lo nasconde)
-          interaction:{ mode:'nearest', axis:'x', intersect:false },
-          events:['mousemove','mouseout','click','touchstart','touchmove','touchend'],
-          plugins:{ legend:{ display:false },
-            tooltip:{
-              backgroundColor:'rgba(28,28,30,0.97)',
-              padding:12,
-              cornerRadius:10,
-              titleFont:{ size:12, weight:'bold' },
-              bodyFont:{ size:12 },
-              displayColors: true,
-              callbacks:{
-                title: items => {
-                  const p = pts[items[0].dataIndex]
-                  return `${p.lbl}  ·  ${p.nick}`
-                },
-                label: ctx => {
-                  const p = pts[ctx.dataIndex]
-                  const scoreLabel = `Score: ${ctx.parsed.y}%`
-                  const catLabel   = metric === 'sentiment'
-                    ? `Sentiment: ${p.label}`
-                    : `Severity: ${p.label}`
-                  return [scoreLabel, catLabel]
-                },
-                afterBody: ctx => {
-                  const t = pts[ctx[0].dataIndex].text
-                  // Spezza il testo in righe da max 45 char per leggibilità mobile
-                  const words = t.split(' ')
-                  const lines = []
-                  let line = ''
-                  for (const w of words) {
-                    if ((line + w).length > 45 && line) { lines.push(line.trim()); line = '' }
-                    line += w + ' '
-                  }
-                  if (line.trim()) lines.push(line.trim())
-                  return ['', ...lines.slice(0, 4), lines.length > 4 ? '…' : '']
-                }
-              }
-            }
+        options={{
+          responsive: true, maintainAspectRatio: false, animation: { duration: 150 },
+          // Disabilitiamo il tooltip nativo di Chart.js — usiamo il custom sopra
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: false }
           },
-          scales:{
-            x:{ grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93', maxRotation:0 },
-              title:{ display:true, text:'Minuti dall\'inizio del meeting', color:'#636366', font:{ size:10 } } },
-            y:{ min:0, max:100, grid:{ color:'rgba(255,255,255,0.05)' },
-              ticks:{ color:'#8e8e93', callback:v=>v+'%' },
-              title:{ display:true, text:yLabel, color:'#636366', font:{ size:10 } } }
-          } }}
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8e8e93', maxRotation: 0 },
+              title: { display: true, text: "Minuti dall\'inizio del meeting", color: '#636366', font: { size: 10 } } },
+            y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#8e8e93', callback: v => v + '%' },
+              title: { display: true, text: yLabel, color: '#636366', font: { size: 10 } } }
+          }
+        }}
       />
     </div>
   )
