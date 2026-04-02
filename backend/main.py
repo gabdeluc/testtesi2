@@ -466,6 +466,42 @@ def generate_mock_transcript(
 
 MOCK_MEETINGS: dict = {}
 
+# Sessioni live in-memory:
+# { meeting_id: { started_at: datetime, speed: float } }
+# speed=1.0 → tempo reale, speed=10.0 → 10x accelerato (per demo)
+MEETING_SESSIONS: dict = {}
+
+def _ts_to_epoch(ts: str) -> float:
+    """Converte ISO 8601 in unix epoch float."""
+    from datetime import timezone
+    try:
+        return datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
+    except Exception:
+        return 0.0
+
+def _meeting_elapsed(meeting_id: str) -> float:
+    """Secondi di meeting trascorsi (considerando speed)."""
+    session = MEETING_SESSIONS.get(meeting_id)
+    if not session:
+        return -1.0  # not started
+    elapsed = (datetime.now() - session['started_at']).total_seconds()
+    return elapsed * session['speed']
+
+def _available_transcript(meeting_id: str) -> List['TranscriptEntry']:
+    """
+    Restituisce solo i messaggi 'già avvenuti' in base al clock del meeting.
+    Se il meeting non è started → nessun messaggio.
+    Se il meeting è ended (elapsed >= durata) → tutti i messaggi.
+    """
+    transcript = _get_transcript(meeting_id)
+    elapsed = _meeting_elapsed(meeting_id)
+    if elapsed < 0:
+        return []   # meeting not started
+    if not transcript:
+        return []
+    base = _ts_to_epoch(transcript[0].created_at)
+    return [m for m in transcript if _ts_to_epoch(m.created_at) - base <= elapsed]
+
 for _meeting_cfg in MEETINGS_CONFIG:
     _mid     = _meeting_cfg["id"]
     _override = GENERATION_OVERRIDES.get(_mid, {})
@@ -676,6 +712,108 @@ def get_config():
 # ENDPOINT — MEETINGS
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ENDPOINT — LIVE MEETING SIMULATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/meeting/{meetingId}/start")
+def start_meeting(
+    meetingId: str,
+    speed:       float = Query(1.0, description="Fattore velocità: 1.0=reale, 5.0=5× accelerato"),
+    join_offset: float = Query(0.0, description="Secondi di meeting da cui entrare (simulazione join in corso)"),
+):
+    """
+    Avvia il clock del meeting. Da questo momento il backend rilascia
+    progressivamente i messaggi in base al tempo trascorso.
+    Idempotente: ri-chiamare con lo stesso meetingId riavvia il meeting.
+    """
+    if meetingId not in MOCK_MEETINGS:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting {meetingId} not found",
+        )
+    # join_offset: permette al frontend di simulare l'ingresso a meeting in corso.
+    # Il backend retrodatata started_at di join_offset secondi (diviso speed),
+    # così al primo poll il meeting risulta già in corso di join_offset secondi.
+    MEETING_SESSIONS[meetingId] = {
+        "started_at": datetime.now() - timedelta(seconds=join_offset / max(0.1, min(speed, 100.0))),
+        "speed":      max(0.1, min(speed, 100.0)),
+    }
+    transcript = MOCK_MEETINGS[meetingId]["transcript"]
+    total_sec  = (
+        _ts_to_epoch(transcript[-1].created_at) - _ts_to_epoch(transcript[0].created_at)
+    ) if transcript else 0.0
+
+    print(f"[live] Meeting {meetingId} avviato · speed={speed}x · durata={total_sec:.0f}s")
+    return {
+        "status":       "started",
+        "meeting_id":   meetingId,
+        "speed":        speed,
+        "total_seconds": round(total_sec, 1),
+        "started_at":   MEETING_SESSIONS[meetingId]["started_at"].isoformat(),
+    }
+
+
+@app.get("/meeting/{meetingId}/status")
+def get_meeting_live_status(meetingId: str):
+    """
+    Stato live del meeting:
+    - not_started: il meeting non è ancora avviato
+    - active:      il meeting è in corso, messages_available < messages_total
+    - ended:       tutti i messaggi sono stati rilasciati
+    """
+    if meetingId not in MOCK_MEETINGS:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting {meetingId} not found",
+        )
+    transcript = MOCK_MEETINGS[meetingId]["transcript"]
+    total_msgs = len(transcript)
+
+    session = MEETING_SESSIONS.get(meetingId)
+    if not session:
+        return {
+            "status":             "not_started",
+            "meeting_id":         meetingId,
+            "messages_available": 0,
+            "messages_total":     total_msgs,
+            "elapsed_seconds":    0,
+            "total_seconds":      round(
+                (_ts_to_epoch(transcript[-1].created_at) - _ts_to_epoch(transcript[0].created_at))
+                if transcript else 0.0, 1
+            ),
+            "progress_pct":       0,
+        }
+
+    elapsed  = _meeting_elapsed(meetingId)
+    available = _available_transcript(meetingId)
+    total_sec = (
+        _ts_to_epoch(transcript[-1].created_at) - _ts_to_epoch(transcript[0].created_at)
+    ) if transcript else 1.0
+
+    is_ended = elapsed >= total_sec
+    return {
+        "status":             "ended" if is_ended else "active",
+        "meeting_id":         meetingId,
+        "speed":              session["speed"],
+        "messages_available": len(available),
+        "messages_total":     total_msgs,
+        "elapsed_seconds":    round(elapsed, 1),
+        "total_seconds":      round(total_sec, 1),
+        "progress_pct":       round(min(elapsed / total_sec * 100, 100), 1) if total_sec > 0 else 0,
+        "started_at":         session["started_at"].isoformat(),
+    }
+
+
+@app.post("/meeting/{meetingId}/reset")
+def reset_meeting(meetingId: str):
+    """Rimuove la sessione live — il meeting torna a not_started."""
+    if meetingId not in MOCK_MEETINGS:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND)
+    MEETING_SESSIONS.pop(meetingId, None)
+    return {"status": "reset", "meeting_id": meetingId}
+
+
 @app.get("/meeting/{meetingId}", response_model=MeetingResponse)
 def get_meeting(meetingId: str):
     meeting = MOCK_MEETINGS.get(meetingId)
@@ -738,7 +876,13 @@ async def get_transcript_with_unified_analysis(
             search=search, limit=limit, offset=offset,
         )
     else:
-        transcript = _get_transcript(meetingId)
+        # In modalità mock con sessione live attiva, rispetta il clock del meeting.
+        # Se il meeting non è stato avviato, restituisce tutti i messaggi (modalità review).
+        session = MEETING_SESSIONS.get(meetingId)
+        if session:
+            transcript = _available_transcript(meetingId)
+        else:
+            transcript = _get_transcript(meetingId)
 
         if search:
             transcript = [e for e in transcript if search.lower() in e.transcribed_text.lower()]

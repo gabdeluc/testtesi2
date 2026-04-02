@@ -63,12 +63,12 @@ const bertDelay = () =>
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 const Toast = ({ message, type, onClose }) => {
-  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
+  useEffect(() => { const t = setTimeout(onClose, 2500); return () => clearTimeout(t) }, [onClose])
   const bg = { info:'#007AFF', success:'#34C759', error:'#FF3B30', warning:'#FF9500' }[type]
   return (
-    <div style={{ background:bg, color:'#fff', padding:'10px 16px', borderRadius:10,
-      marginBottom:8, fontSize:13, fontWeight:600,
-      boxShadow:'0 4px 12px rgba(0,0,0,0.3)', animation:'slideIn 0.3s ease' }}>
+    <div style={{ background:bg, color:'#fff', padding:'7px 12px', borderRadius:8,
+      marginBottom:6, fontSize:12, fontWeight:600, opacity:0.9,
+      boxShadow:'0 2px 8px rgba(0,0,0,0.25)', animation:'slideIn 0.2s ease' }}>
       {message}
     </div>
   )
@@ -109,15 +109,25 @@ export default function App() {
    */
   const [mode,            setMode]           = useState('live')
   const [joinOffset,      setJoinOffset]     = useState(0)
+  // Stato live proveniente dal backend (not_started | active | ended)
+  const [meetingStatus,   setMeetingStatus]  = useState('not_started')
+  const [liveSpeed,       setLiveSpeed]      = useState(1.0)
+  const [liveTotalSec,    setLiveTotalSec]   = useState(0)    // total_seconds dal backend
+  const pollTimerRef = useRef(null)
 
   // Framerate simulation: l'utente sceglie quanti secondi di meeting
   // vengono "rilasciati" ogni secondo reale. Es: 10 = 10 secondi di meeting/sec.
   // Il backend viene interrogato con ?simulatedOffset=N per ricevere solo
   // i messaggi fino al secondo N del meeting. Simula il ritardo BERT reale.
   const [frameRate,        setFrameRate]      = useState(0)   // 0 = off
-  const [simOffset,        setSimOffset]      = useState(0)   // secondi simulati trascorsi
+  const [simOffset,        setSimOffset]      = useState(0)
   const simOffsetRef = useRef(0)
   const frameTimerRef = useRef(null)
+  // Riferimento temporale per il timer live: { wallAtSync, realAtSync }
+  // wallSec viene calcolato come wallAtSync + (Date.now() - realAtSync) / 1000
+  // invece di incrementare wallRef ogni 100ms → nessun drift, nessun reset.
+  const liveTimerSync = useRef(null)  // { wallAtSync: number, realAtSync: number }
+  const liveClockRef  = useRef(null)  // interval del clock live
   const [bertProcessing,  setBertProcessing] = useState(false)
   const [speed, setSpeed] = useState(5)
 
@@ -166,8 +176,10 @@ export default function App() {
     messageStream:     { participantFilter:null, limit:30 },
   })
 
+  const toastCounter = useRef(0)
   const showToast = useCallback((msg, type='info') => {
-    setToasts(p => [...p, { id:Date.now(), message:msg, type }])
+    const id = ++toastCounter.current   // sempre unico, nessuna collisione
+    setToasts(p => [...p, { id, message: msg, type }])
   }, [])
 
   // ── playback helpers ──────────────────────────────────────────────────────
@@ -182,74 +194,148 @@ export default function App() {
     if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null }
   }, [])
 
+  // Clock live: non accumula ma calcola da riferimento assoluto → no drift/reset
+  const startLiveClock = useCallback(() => {
+    if (liveClockRef.current) clearInterval(liveClockRef.current)
+    liveClockRef.current = setInterval(() => {
+      const sync = liveTimerSync.current
+      if (!sync) return
+      const elapsed = sync.wallAtSync + (Date.now() - sync.realAtSync) / 1000
+      wallRef.current = elapsed
+      setWallSec(elapsed)
+    }, 100)
+  }, [])
+
+  const stopLiveClock = useCallback(() => {
+    if (liveClockRef.current) { clearInterval(liveClockRef.current); liveClockRef.current = null }
+  }, [])
+
+  const stopPollTimer = useCallback(() => {
+    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null }
+  }, [])
+
   const stopTimerRef = useRef(stopTimer)
-  const stopClockRef = useRef(stopClock)
+  const stopClockRef  = useRef(stopClock)
+  const startClockRef = useRef(null)   // popolato dopo la dichiarazione di startClock
   useEffect(() => { stopTimerRef.current = stopTimer }, [stopTimer])
   useEffect(() => { stopClockRef.current = stopClock }, [stopClock])
 
   // ── data loading ──────────────────────────────────────────────────────────
-  const loadMeeting = useCallback(async (meetingId, isRefresh=false) => {
-    if (!isRefresh) {
-      setLoading(true); setError(null)
-      stopTimerRef.current(); stopClockRef.current()
-      indexRef.current = 0; wallRef.current = 0
-      setPlaybackIndex(0); setWallSec(0); setIsPlaying(false)
-      setMode('live')
-      setSimOffset(0); simOffsetRef.current = 0
-      setShowJoinBanner(false)
-    }
+  // ── pollBackend: chiede al backend i messaggi disponibili finora ─────────────
+  const pollBackend = useCallback(async (meetingId) => {
     try {
-      const [rP, rM] = await Promise.all([
-        fetch(`${API_URL}/participants`),
+      const [rStatus, rData] = await Promise.all([
+        fetch(`${API_URL}/meeting/${meetingId}/status`),
         fetch(`${API_URL}/meeting/${meetingId}/analysis`),
       ])
-      if (!rM.ok) throw new Error(`HTTP ${rM.status}`)
-      const [dP, dM] = await Promise.all([rP.json(), rM.json()])
+      if (!rStatus.ok || !rData.ok) return
+      const [dStatus, dData] = await Promise.all([rStatus.json(), rData.json()])
+
+      // Aggiorna stato meeting dal backend
+      setMeetingStatus(dStatus.status)
+      if (dStatus.total_seconds > 0) setLiveTotalSec(dStatus.total_seconds)
+
+      // Aggiorna transcript con i messaggi disponibili finora
+      const newTranscript = dData.transcript || [];
+
+setAllTranscript(prev => {
+  if (newTranscript.length > prev.length) {
+    const diff = newTranscript.length - prev.length;
+
+    if (diff > 0 && prev.length > 0) {
+      // silent: nuovi messaggi arrivati
+    }
+  }
+  return newTranscript;
+});
+
+      // Sincronizza il riferimento temporale con il backend.
+      // Il clock locale calcola wallSec = wallAtSync + (now - realAtSync) / 1000.
+      if (dStatus.elapsed_seconds >= 0 && dStatus.status !== 'ended') {
+        liveTimerSync.current = {
+          wallAtSync: dStatus.elapsed_seconds,
+          realAtSync: Date.now(),
+        }
+      }
+
+      // Meeting concluso → ferma tutto e snap timer al valore esatto
+      if (dStatus.status === 'ended') {
+        stopPollTimer()
+        stopLiveClock()
+        setBertProcessing(false)
+        setIsPlaying(false)
+        liveTimerSync.current = null
+        // Snap wallSec al valore esatto di fine meeting
+        const totalSec = dStatus.total_seconds || 0
+        wallRef.current = totalSec
+        setWallSec(totalSec)
+      }
+    } catch { /* silenzioso — il backend potrebbe essere momentaneamente non disponibile */ }
+  }, [showToast, stopPollTimer])
+
+  const loadMeeting = useCallback(async (meetingId) => {
+    setLoading(true); setError(null)
+    stopTimerRef.current(); stopClockRef.current(); stopPollTimer()
+    indexRef.current = 0; wallRef.current = 0
+    setPlaybackIndex(0); setWallSec(0); setIsPlaying(false)
+    setMode('live'); setMeetingStatus('not_started'); setBertProcessing(false)
+    setSimOffset(0); simOffsetRef.current = 0
+    setShowJoinBanner(false); setAllTranscript([])
+
+    try {
+      // 1. Carica partecipanti
+      const rP = await fetch(`${API_URL}/participants`)
+      if (!rP.ok) throw new Error('participants error')
+      const dP = await rP.json()
       setParticipants(dP.participants)
 
-      if (!isRefresh) {
-        const transcript = dM.transcript
-        setAllTranscript(transcript)
+      // 2. Avvia il meeting sul backend (con join offset casuale per simulare ingresso in corso)
+      //    Il backend calcola quanto tempo è passato e rilascia solo i messaggi avvenuti finora
+      const joinPct  = 0.2 + Math.random() * 0.4   // entriamo tra 20% e 60% del meeting
+      //    Usiamo speed per comprimere o espandere il tempo: 1x = reale
+      //    Il "join" viene simulato avviando il meeting con un offset temporale negativo.
+      //    Poiché /start imposta started_at=now, aspettiamo e facciamo un primo poll.
+      const startRes = await fetch(`${API_URL}/meeting/${meetingId}/start?speed=${liveSpeed}`, { method: 'POST' })
+      if (!startRes.ok) throw new Error('start error')
+      const startData = await startRes.json()
 
-        /*
-         * Simula l'ingresso a meeting in corso.
-         * Calcoliamo quanti messaggi sarebbero già avvenuti se il meeting
-         * fosse iniziato N minuti fa. Usiamo i gap reali dei timestamp:
-         * scegliamo un punto di ingresso casuale tra il 20% e il 60%
-         * del meeting (abbastanza da essere "in corso" ma non quasi finito).
-         */
-        const n = transcript.length
-        if (n > 4) {
-          const joinAt = Math.floor(n * (0.2 + Math.random() * 0.4))
-          setJoinOffset(joinAt)
-          indexRef.current = joinAt
-          setPlaybackIndex(joinAt)
-          // wall clock parte dal timestamp reale di ingresso
-          if (transcript[joinAt]) {
-            const elapsed = tsToSec(transcript[joinAt].created_at) - tsToSec(transcript[0].created_at)
-            wallRef.current = elapsed
-            setWallSec(elapsed)
-          }
-          setShowJoinBanner(true)
-          setTimeout(() => setShowJoinBanner(false), 5000)
-        } else {
-          setJoinOffset(0)
-        }
-        setIsPlaying(true)
-      } else {
-        // refresh: solo aggiorna il transcript
-        setAllTranscript(prev => {
-          if (dM.transcript.length > prev.length)
-            showToast(`+${dM.transcript.length - prev.length} nuovi messaggi`, 'info')
-          return dM.transcript
-        })
-      }
+      // 3. Simula "ingresso in corso" avanzando artificialmente il clock del backend:
+      //    riavvia il meeting con started_at retrodatato di joinPct * durata totale
+      //    Nota: il backend usa started_at=now(), quindi per simulare join in corso
+      //    aggiorniamo la sessione con un offset (chiamiamo /start con started_at overriden)
+      //    Per semplicità: il primo poll avviene subito, mostrando i messaggi disponibili
+      const totalSec  = startData.total_seconds
+      const joinSec   = Math.floor(totalSec * joinPct)
+
+      // Sovrascriviamo started_at retrodatando di joinSec secondi
+      // Il backend interpreta speed=liveSpeed, quindi started_at - joinSec/speed
+      // Usiamo un trick: riavviamo con offset passato come query param
+      await fetch(
+        `${API_URL}/meeting/${meetingId}/start?speed=${liveSpeed}&join_offset=${joinSec}`,
+        { method: 'POST' }
+      )
+
+      // 4. Inizializza il riferimento temporale a 0 prima della prima poll
+      //    così il clock parte subito senza aspettare la risposta del backend
+      liveTimerSync.current = { wallAtSync: 0, realAtSync: Date.now() }
+
+      // 4b. Prima poll immediata (aggiorna liveTimerSync col valore reale del backend)
+      await pollBackend(meetingId)
+      setMeetingStatus('active')
+      setIsPlaying(true)
+
+      // Mostra banner ingresso in corso
+      setShowJoinBanner(true)
+      setTimeout(() => setShowJoinBanner(false), 5000)
+
+      // silent: meeting avviato
     } catch {
-      if (!isRefresh) { setError('Impossibile caricare il meeting'); showToast('Errore caricamento', 'error') }
+      setError('Impossibile caricare il meeting')
+      showToast('Errore caricamento', 'error')
     } finally {
-      if (!isRefresh) setLoading(false)
+      setLoading(false)
     }
-  }, [showToast])
+  }, [showToast, stopPollTimer, pollBackend, liveSpeed])
 
   useEffect(() => {
     fetch(`${API_URL}/meetings`).then(r=>r.json()).then(d=>setMeetingList(d.meetings||[])).catch(()=>{})
@@ -257,75 +343,42 @@ export default function App() {
 
   useEffect(() => { loadMeeting(selectedMeeting) }, [selectedMeeting, loadMeeting])
 
+  // ── Polling backend in live mode ─────────────────────────────────────────
+  // Il framerate determina ogni quanti secondi chiediamo aggiornamenti al backend.
+  // Con Off (0) → polling ogni 3 secondi di default in live mode.
+  // Con 5s → ogni 5 secondi.
+  // Avvia clock locale e polling quando il meeting è active
+  useEffect(() => {
+    if (mode !== 'live' || meetingStatus === 'ended' || meetingStatus === 'not_started') {
+      stopPollTimer()
+      if (meetingStatus === 'ended') {
+        setBertProcessing(false)
+        stopLiveClock()
+      }
+      return
+    }
+    // Inizializza il riferimento se non esiste ancora
+    if (!liveTimerSync.current) {
+      liveTimerSync.current = { wallAtSync: wallRef.current, realAtSync: Date.now() }
+    }
+    // Avvia il clock live (reference-based, no drift)
+    startLiveClock()
+    const interval = frameRate > 0 ? frameRate * 1000 : 3000
+    stopPollTimer()
+    pollTimerRef.current = setInterval(() => pollBackend(selectedMeeting), interval)
+    return () => { stopPollTimer(); stopLiveClock() }
+  }, [mode, meetingStatus, frameRate, selectedMeeting, pollBackend, stopPollTimer, startLiveClock, stopLiveClock])
+
   // refresh rate rimosso: i dati mock non cambiano tra una fetch e l'altra
 
   useEffect(() => {
     try { localStorage.setItem('visibleWidgets', JSON.stringify(visibleWidgets)) } catch {}
   }, [visibleWidgets])
 
-  // ── Framerate simulation (intervalli reali) ──────────────────────────────
-  // Con frameRate = N secondi:
-  //   ogni N secondi reali → vengono rilasciati tutti i messaggi del meeting
-  //   avvenuti nei successivi N secondi di tempo del meeting.
-  // Simula il comportamento reale: BERT elabora un blocco, poi lo rilascia.
-  // Con frameRate = 0 → off, usa scheduleNext con gap naturali.
-  useEffect(() => {
-    stopFrameTimer()
-    if (frameRate === 0 || mode !== 'live' || !allTranscript.length) return
-
-    // Ferma il playback continuo di scheduleNext (non serve in frame-mode)
-    stopTimer()
-    stopClock()
-
-    const baseTs = tsToSec(allTranscript[0].created_at)
-
-    // Partenza: se simOffsetRef è ancora a 0 (primo avvio), usa joinOffset.
-    // Se cambio frameRate a meeting in corso, riprendo esattamente da dove ero.
-    if (simOffsetRef.current === 0) {
-      const startTs = joinOffset > 0 && allTranscript[joinOffset]
-        ? tsToSec(allTranscript[joinOffset].created_at) - baseTs
-        : 0
-      simOffsetRef.current = startTs
-    }
-
-    frameTimerRef.current = setInterval(() => {
-      simOffsetRef.current += frameRate
-      const meetingCursor = simOffsetRef.current
-
-      // Trova l'indice del primo messaggio oltre la finestra corrente
-      let nextIdx = allTranscript.findIndex(
-        m => tsToSec(m.created_at) - baseTs > meetingCursor
-      )
-      if (nextIdx === -1) nextIdx = allTranscript.length
-
-      indexRef.current = nextIdx
-      setPlaybackIndex(nextIdx)
-
-      // Aggiorna il wallClock all'ultimo messaggio rilasciato
-      const lastMsg = allTranscript[nextIdx - 1]
-      if (lastMsg) {
-        const ws = tsToSec(lastMsg.created_at) - baseTs
-        wallRef.current = ws
-        setWallSec(ws)
-      }
-
-      // Meeting concluso — snap timer al valore esatto
-      if (nextIdx >= allTranscript.length) {
-        stopFrameTimer()
-        stopClock()
-        setIsPlaying(false)
-        simOffsetRef.current = 0  // reset per prossimo meeting
-        const exact = tsToSec(allTranscript[allTranscript.length - 1].created_at) - baseTs
-        wallRef.current = exact
-        setWallSec(exact)
-      }
-    }, frameRate * 1000)
-
-    // Avvia subito con il primo batch (messaggi precedenti al join già visibili)
-    setIsPlaying(true)
-
-    return () => stopFrameTimer()
-  }, [frameRate, mode, allTranscript, joinOffset, stopFrameTimer, stopTimer, stopClock])
+  // Framerate: controlla l'intervallo di polling al backend in live mode.
+  // Il vecchio sistema client-side (simOffsetRef + findIndex) è sostituito
+  // dal polling che usa il backend come fonte di verità.
+  // frameRate=0 → poll ogni 3s (default), frameRate=N → poll ogni N secondi.
 
   // ── playback engine ───────────────────────────────────────────────────────
   const scheduleNext = useCallback((idx, transcript, spd, isLive) => {
@@ -353,10 +406,7 @@ export default function App() {
     // In live mode aggiungiamo il ritardo di elaborazione BERT
     const delay = isLive ? naturalDelay + bertDelay() : naturalDelay
 
-    // Mostra l'indicatore "BERT sta elaborando" nell'ultimo tratto
-    if (isLive && delay > 400) {
-      setTimeout(() => setBertProcessing(true), Math.max(0, delay - bertDelay()))
-    }
+    // (indicatore BERT rimosso — non usato in live mode backend-driven)
 
     timerRef.current = setTimeout(() => {
       setBertProcessing(false)
@@ -376,6 +426,8 @@ export default function App() {
       setWallSec(wallRef.current)
     }, 100)
   }, [stopClock])
+  // Aggiorna il ref ora che startClock è dichiarato
+  useEffect(() => { startClockRef.current = startClock }, [startClock])
 
 
 
@@ -404,11 +456,14 @@ export default function App() {
         setWallSec(wallRef.current)
       }
       const isLive = mode === 'live'
-      // In live mode il framerate a intervalli è gestito dall'useEffect separato.
-      // scheduleNext in live usa sempre velocità 1× (gap reali + ritardo BERT).
-      const effectiveSpeed = isLive ? 1 : speed
-      scheduleNext(indexRef.current, allTranscript, effectiveSpeed, isLive)
-      startClock(effectiveSpeed)
+      if (isLive) {
+        // In live mode il timer è gestito dal clock live (liveClockRef).
+        // scheduleNext e startClock NON vengono chiamati — il backend è la fonte.
+        return
+      }
+      // Review mode: playback client-side
+      scheduleNext(indexRef.current, allTranscript, speed, false)
+      startClock(speed)
     } else {
       stopTimer(); stopClock(); setBertProcessing(false)
     }
@@ -421,7 +476,8 @@ export default function App() {
 
   // Entra in review: resetta al messaggio 0, dà controllo all'utente
   const enterReviewMode = () => {
-    stopTimer(); stopClock(); setIsPlaying(false)
+    stopTimer(); stopClock(); stopPollTimer(); setIsPlaying(false)
+    setBertProcessing(false)
     indexRef.current = 0; wallRef.current = 0
     setPlaybackIndex(0); setWallSec(0)
     setMode('review'); setSpeed(5)
@@ -450,7 +506,7 @@ export default function App() {
       download:`${selectedMeeting}_${new Date().toISOString().split('T')[0]}.json`
     })
     a.click(); URL.revokeObjectURL(a.href)
-    showToast('JSON esportato', 'success')
+    // silent
   }
 
   const exportCSV = () => {
@@ -467,7 +523,7 @@ export default function App() {
       download:`${selectedMeeting}_${new Date().toISOString().split('T')[0]}.csv`
     })
     a.click(); URL.revokeObjectURL(a.href)
-    showToast('CSV esportato', 'success')
+    // silent
   }
 
   // ── computed ──────────────────────────────────────────────────────────────
@@ -476,29 +532,31 @@ export default function App() {
    * - In LIVE: solo i messaggi da joinOffset in poi (quelli durante la tua presenza)
    * - In REVIEW: tutto, dall'inizio assoluto
    */
-  // Mostra sempre tutto il transcript fino al punto corrente del playback.
-  // In live mode il joinOffset determina DA DOVE iniziano ad arrivare nuovi messaggi,
-  // ma i messaggi precedenti all'ingresso vengono mostrati subito nei widget
-  // (situazione pregressa del meeting).
-  const liveTranscript = allTranscript.slice(0, playbackIndex)
+  // In LIVE mode il transcript viene gestito dal backend (polling).
+  // allTranscript contiene già solo i messaggi disponibili finora.
+  // In REVIEW mode il playback è client-side: slice(0, playbackIndex).
+  const liveTranscript = mode === 'live'
+    ? allTranscript  // backend è la fonte di verità — mostra tutto ciò che ha rilasciato
+    : allTranscript.slice(0, playbackIndex)
 
   const total      = allTranscript.length
   const baseTs     = total > 0 ? tsToSec(allTranscript[0].created_at) : 0
-  const totalSec   = total > 0 ? tsToSec(allTranscript[total-1].created_at) - baseTs : 0
+  const _totalSecFromTs = total > 0 ? tsToSec(allTranscript[total-1].created_at) - baseTs : 0
+  // In live mode usa il valore dal backend (include tutti i messaggi, non solo quelli arrivati)
+  const totalSec   = mode === 'live' && liveTotalSec > 0 ? liveTotalSec : _totalSecFromTs
 
   // Progress bar: in live parte dal punto di ingresso
   const liveStartTs = joinOffset > 0 && allTranscript[joinOffset]
     ? tsToSec(allTranscript[joinOffset].created_at) - baseTs
     : 0
-  const liveTotalSec = totalSec - liveStartTs
   const progressPct  = mode === 'review'
     ? (totalSec > 0 ? Math.min((wallSec / totalSec) * 100, 100) : 0)
-    : (liveTotalSec > 0 ? Math.min(((wallSec - liveStartTs) / liveTotalSec) * 100, 0) + (
-        (wallSec - liveStartTs) / liveTotalSec * 100
-      ) : 0)
+    : (total > 0 ? Math.min((allTranscript.length / total) * 100, 100) : 0)
 
-  const isFinished = playbackIndex >= total && total > 0
-  const liveEnded  = isFinished && mode === 'live'
+  const isFinished = mode === 'live'
+    ? meetingStatus === 'ended'
+    : playbackIndex >= total && total > 0
+  const liveEnded  = meetingStatus === 'ended' && mode === 'live'
 
   // ── helpers ───────────────────────────────────────────────────────────────
   const calcStats = tr => {
@@ -633,12 +691,7 @@ export default function App() {
   return (
     <div style={S.app}>
       {/* Toasts */}
-      <div style={{ position:'fixed', top:80, right:16, zIndex:999, pointerEvents:'none' }}>
-        {toasts.map(t => (
-          <Toast key={t.id} message={t.message} type={t.type}
-            onClose={() => setToasts(p => p.filter(x => x.id !== t.id))} />
-        ))}
-      </div>
+      {/* toast rimossi — non servono su mobile */}
 
       <div style={{ display:'flex', minHeight:'100vh' }}>
 
@@ -773,13 +826,7 @@ export default function App() {
                   : `${playbackIndex} / ${total} messaggi`}
               </span>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                {/* Indicatore elaborazione BERT */}
-                {bertProcessing && mode === 'live' && (
-                  <span style={{ fontSize:10, color:'#FF9500', display:'flex', alignItems:'center', gap:4 }}>
-                    <span style={{ animation:'spin 1s linear infinite', display:'inline-block' }}>⏳</span>
-                    BERT sta elaborando…
-                  </span>
-                )}
+
                 <span style={{ color: isPlaying ? '#007AFF' : isFinished ? '#34C759' : '#636366' }}>
                   {mode==='live'  && isPlaying   && '● In diretta'}
                   {mode==='live'  && liveEnded   && '✓ Meeting concluso'}
