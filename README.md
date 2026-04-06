@@ -1,6 +1,6 @@
 # Meeting Intelligence
 
-> Piattaforma di analisi automatica di riunioni in tempo reale basata su modelli BERT per sentiment analysis e rilevamento tossicità.
+> Sistema distribuito per l'analisi automatica di riunioni in tempo reale, basato su modelli BERT per sentiment analysis e rilevamento tossicità. Sviluppato nell'ambito dell'OR3 del progetto ARIANNA.
 
 ---
 
@@ -14,10 +14,12 @@
 6. [Avvio con Docker](#6-avvio-con-docker)
 7. [Configurazione](#7-configurazione)
 8. [API Reference](#8-api-reference)
-9. [Testing](#9-testing)
-10. [Integrazione con Arianna](#10-integrazione-con-arianna)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Glossario tecnico](#12-glossario-tecnico)
+9. [Simulazione Live](#9-simulazione-live)
+10. [Dataset di riferimento](#10-dataset-di-riferimento)
+11. [Testing](#11-testing)
+12. [Integrazione con Arianna](#12-integrazione-con-arianna)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Glossario tecnico](#14-glossario-tecnico)
 
 ---
 
@@ -25,24 +27,19 @@
 
 Meeting Intelligence è un sistema distribuito che analizza le trascrizioni di riunioni in tempo reale. Ogni messaggio del transcript viene classificato su due dimensioni indipendenti:
 
-- **Sentiment** — quanto è positivo, neutro o negativo il tono del messaggio (scala 1–5 stelle, normalizzata in `[−1, +1]`)
-- **Tossicità** — se il messaggio contiene linguaggio offensivo o inappropriato (score `[0, 1]` con soglia a `0.5`)
+- **Sentiment** — tono del messaggio (positivo/neutro/negativo), normalizzato in `[0, 1]` con Sentiment Polarity Index di sessione in `[-1, +1]`
+- **Tossicità** — linguaggio offensivo o inappropriato, score `[0, 1]` con soglia binaria a `0.5` e tre livelli di severity (low/medium/high)
 
-Il sistema è stato progettato per integrarsi con la piattaforma **Arianna** (sistema di videoconferenza e trascrizione automatica), ma include un layer di dati mock che permette di sviluppare e testare in modo completamente autonomo, senza dipendere da Arianna.
+Il sistema è progettato per integrarsi con la piattaforma **ARIANNA** (videoconferenza e ASR), ma include un layer di simulazione live lato backend e dati mock che permettono sviluppo e test completamente autonomi.
 
-### Cosa fa il sistema
+### Modalità operative
 
-1. Legge un transcript di riunione (real-time o storico)
-2. Manda i testi ai microservizi BERT per l'analisi
-3. Restituisce il transcript arricchito con metadati di sentiment e tossicità
-4. Calcola statistiche aggregate (distribuzione etichette, polarity media, ratio tossicità)
-5. Espone tutto via API REST al frontend React che visualizza la dashboard in tempo reale con playback simulato
+- **Live** — il backend avvia un clock reale, rilascia progressivamente i messaggi in base al tempo trascorso, il frontend fa polling e aggiorna la dashboard
+- **Review** — playback client-side dell'intero transcript a velocità configurabile (1×–20×)
 
 ---
 
 ## 2. Architettura del sistema
-
-Il sistema segue un'architettura a **microservizi** con un gateway centrale. Ogni componente è containerizzato e comunicano tra loro via rete Docker interna.
 
 ```
 ┌─────────────────┐        HTTP         ┌──────────────────────┐
@@ -52,72 +49,50 @@ Il sistema segue un'architettura a **microservizi** con un gateway centrale. Ogn
 │                 │      JSON           │                      │
 └─────────────────┘                     └──────────┬───────────┘
                                                    │
-                              ┌────────────────────┼────────────────────┐
-                              │                    │                    │
-                              ▼                    ▼                    │
-                   ┌─────────────────┐  ┌─────────────────┐            │
-                   │  BERT Sentiment │  │  BERT Toxicity  │            │
-                   │   (port 5001)   │  │   (port 5003)   │            │
-                   │                 │  │                 │            │
-                   │ nlptown/bert-   │  │ gravitee-io/    │            │
-                   │ multilingual    │  │ bert-small-tox  │            │
-                   └─────────────────┘  └─────────────────┘            │
-                                                                        │
-                                         ┌──────────────────────────┐  │
-                                         │   Mock Data Layer        │◄─┘
-                                         │   (config/mock_data.yaml)│
-                                         │   In-memory dict         │
-                                         └──────────────────────────┘
+                              ┌────────────────────┼─────────────────────┐
+                              │                    │                     │
+                              ▼                    ▼                     │
+                   ┌─────────────────┐  ┌─────────────────┐             │
+                   │  BERT Sentiment │  │  BERT Toxicity  │             │
+                   │   (port 5001)   │  │   (port 5003)   │             │
+                   └─────────────────┘  └─────────────────┘             │
+                                                                         │
+                                         ┌───────────────────────────┐  │
+                                         │   Mock / Live Simulation  │◄─┘
+                                         │   MEETING_SESSIONS (dict) │
+                                         │   mock_data.yaml          │
+                                         └───────────────────────────┘
 ```
-
-### Componenti
 
 | Componente | Tecnologia | Porta | Responsabilità |
 |---|---|---|---|
-| **Frontend** | React 18 + Vite + Chart.js | 3000 | Dashboard interattiva con playback del meeting |
-| **Backend Gateway** | FastAPI (Python 3.11) | 8000 | Routing, aggregazione, normalizzazione dati |
-| **BERT Sentiment** | HuggingFace Transformers | 5001 | Classificazione 1–5 stelle del tono |
-| **BERT Toxicity** | HuggingFace Transformers | 5003 | Classificazione binaria tossicità |
+| Frontend | React 18 + Vite + Chart.js | 3000 | Dashboard, playback live e review |
+| Backend Gateway | FastAPI Python 3.11 | 8000 | Orchestrazione, live simulation, aggregazione |
+| BERT Sentiment | HuggingFace Transformers | 5001 | Inferenza sentiment, score [0,1] |
+| BERT Toxicity | HuggingFace Transformers | 5003 | Inferenza toxicity, classificazione binaria |
 
-### Pattern architetturali utilizzati
+### Pattern architetturali
 
-**Gateway Pattern** — il backend è l'unico punto di ingresso per il frontend. Aggrega le risposte dei due microservizi BERT in un'unica risposta arricchita, in modo che il frontend non debba conoscere i microservizi interni.
+**API Gateway** — unico punto di ingresso per il frontend; `asyncio.gather` esegue le due inferenze BERT in parallelo.
 
-**Abstract Predictor Pattern** — `models/predictor.py` definisce una classe astratta `ModelPredictor` che normalizza output eterogenei (stelle BERT → label positivo/neutro/negativo). Aggiungere un nuovo modello di sentiment richiede solo implementare `_raw_predict()` e `_normalize_output()`.
+**Abstract Predictor** — `SentimentPredictor` e `ToxicityDetector` attivano il fallback mock al primo errore di connessione, in modo permanente.
 
-**Mock Fallback** — se i microservizi BERT non sono raggiungibili (es. sviluppo locale senza Docker), il gateway attiva automaticamente un classificatore rule-based basato su keyword. Questo permette di sviluppare il frontend e testare la logica di business senza GPU o container pesanti.
+**Mock Fallback** — classificatori rule-based deterministici (`hash(text)` come seed), attivi quando i microservizi BERT non sono raggiungibili.
 
-**Singleton** — ogni microservizio BERT carica il modello una sola volta in memoria al boot (`BERTSentimentModel._instance`). Le richieste successive condividono la stessa istanza, evitando reload costosi (~500 MB per il modello sentiment).
+**Singleton** — ogni microservizio carica il modello una volta al boot e lo condivide tra tutte le richieste.
 
 ---
 
 ## 3. Prerequisiti
 
-### Software richiesto
+| Software | Versione minima |
+|---|---|
+| Docker Desktop | 24.x |
+| Docker Compose | 2.x |
+| Python (solo locale) | 3.11+ |
+| Node.js (solo locale) | 20 LTS |
 
-| Software | Versione minima | Verifica |
-|---|---|---|
-| Docker Desktop | 24.x | `docker --version` |
-| Docker Compose | 2.x (incluso in Docker Desktop) | `docker compose version` |
-| Git | qualsiasi | `git --version` |
-
-> **Nota per Windows**: assicurarsi che WSL 2 sia abilitato e che Docker Desktop utilizzi il backend WSL 2. Verificare in *Settings → General → Use WSL 2 based engine*.
-
-### Per lo sviluppo locale (senza Docker)
-
-| Software | Versione | Note |
-|---|---|---|
-| Python | 3.11+ | Versioni precedenti non supportate (uso di `match/case` e `tomllib`) |
-| Node.js | 20 LTS | Richiesto dal frontend |
-| pip | ultima versione | `pip install --upgrade pip` |
-
-### Risorse hardware
-
-| Configurazione | RAM minima | Note |
-|---|---|---|
-| Solo backend gateway + mock | 512 MB | I microservizi BERT **non** vengono avviati |
-| Stack completo con BERT | **4 GB** | BERT Sentiment ~2 GB + BERT Toxicity ~1.5 GB |
-| Con GPU (opzionale) | 4 GB RAM + 4 GB VRAM | Inference ~10× più veloce; richede CUDA 11.8+ |
+**RAM**: 512 MB solo backend+mock, **4 GB** per lo stack completo con BERT.
 
 ---
 
@@ -125,659 +100,239 @@ Il sistema segue un'architettura a **microservizi** con un gateway centrale. Ogn
 
 ```
 meeting-intelligence/
-│
-├── backend/                        # Gateway FastAPI
-│   ├── main.py                     # Entry point, tutti gli endpoint REST
-│   ├── pyproject.toml              # Dipendenze Python (PEP 517)
-│   ├── pytest.ini                  # Configurazione test suite
-│   ├── Dockerfile
-│   │
+├── backend/
+│   ├── main.py                  # Gateway: endpoint REST, live simulation
+│   ├── pytest.ini               # Configurazione test
 │   ├── config/
-│   │   ├── __init__.py
-│   │   ├── config_loader.py        # Lettura mock_data.yaml con cache
-│   │   └── mock_data.yaml          # Frasi campione, partecipanti, meeting
-│   │
+│   │   └── mock_data.yaml       # Frasi campione, partecipanti, meeting
 │   ├── models/
-│   │   ├── __init__.py
-│   │   └── predictor.py            # Abstract predictor + ToxicityDetector
-│   │
+│   │   └── predictor.py         # SentimentPredictor + ToxicityDetector
 │   └── tests/
-│       ├── conftest.py             # Fixtures condivise (client, sample_texts, ecc.)
-│       ├── test_api_extended.py    # Test endpoint HTTP
-│       ├── test_integration.py     # Test end-to-end con dati reali
-│       ├── test_services_complete.py  # Test logica business e mock data
-│       ├── test_statistics.py      # Validazione matematica delle statistiche
-│       ├── test_parametrized.py    # Test data-driven con pytest.mark.parametrize
-│       ├── test_coverage_gap.py    # Test per coprire branch mancanti
-│       ├── test_edge_cases.py      # Input boundary, Unicode, stress test
-│       └── test_performance.py     # SLA e tempi di risposta
-│
-├── frontend/                       # Dashboard React
-│   ├── src/
-│   │   ├── main.jsx                # Entry point React
-│   │   └── App.jsx                 # Componente principale (dashboard, playback)
-│   ├── index.html
-│   ├── package.json
-│   ├── vite.config.js
-│   └── Dockerfile
-│
+│       ├── conftest.py
+│       ├── test_api_extended.py     # 23 test — endpoint HTTP
+│       ├── test_integration.py      # 13 test — end-to-end
+│       ├── test_services_complete.py # 20 test — logica business
+│       ├── test_statistics.py       # 12 test — invarianti matematiche
+│       ├── test_parametrized.py     # 13 test — data-driven
+│       └── test_coverage_gap.py     # 22 test — branch coverage
+├── frontend/
+│   └── src/App.jsx              # Dashboard React (1300+ righe)
 ├── services/
-│   ├── bert-sentiment/             # Microservizio sentiment
-│   │   ├── main.py                 # FastAPI con modello nlptown/bert-multilingual
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   │
-│   └── bert-toxicity/              # Microservizio tossicità
-│       ├── main.py                 # FastAPI con modello gravitee-io/bert-small-toxicity
-│       ├── requirements.txt
-│       └── Dockerfile
-│
-└── docker-compose.yml              # Orchestrazione completa
+│   ├── bert-sentiment/          # Microservizio porta 5001
+│   └── bert-toxicity/           # Microservizio porta 5003
+└── docker-compose.yml           # Orchestrazione con healthcheck
 ```
-
-### File chiave da conoscere
-
-**`backend/main.py`** — contiene tutta la logica del gateway: endpoint REST, modelli Pydantic, fallback mock BERT, generazione transcript deterministico, aggregazione statistica. Se stai aggiungendo un endpoint nuovo, questo è il file.
-
-**`backend/config/mock_data.yaml`** — fonte di verità per lo sviluppo. Contiene le frasi di esempio usate per generare i transcript mock, l'elenco dei partecipanti (`Alice`, `Bob`, `Charlie`) e la configurazione del meeting `mtg001`. Modificare questo file cambia il comportamento di tutto il sistema mock.
-
-**`backend/models/predictor.py`** — pattern architetturale per i modelli ML. Se in futuro si vuole aggiungere un modello di sentiment diverso da BERT (es. TextBlob, VADER, GPT), si estende `ModelPredictor` qui.
 
 ---
 
 ## 5. Setup locale (senza Docker)
 
-Questa sezione descrive come avviare backend e frontend direttamente sulla propria macchina, senza Docker. È utile quando si vuole sviluppare con hot-reload veloce o non si ha RAM sufficiente per i container BERT.
-
-> I microservizi BERT **non vengono avviati** in questa modalità. Il gateway rileva automaticamente che non sono raggiungibili e attiva il fallback mock rule-based. Tutto funziona normalmente con dati simulati.
-
-### 5.1 Setup backend Python
+> I microservizi BERT **non vengono avviati**. Il mock fallback si attiva automaticamente.
 
 ```bash
-# Entrare nella cartella backend
+# Backend
 cd backend
-
-# Creare il virtual environment (isolamento dipendenze — non usare il Python di sistema)
-python3.11 -m venv .venv
-
-# Attivare il virtual environment
-source .venv/bin/activate          # Linux / macOS
-.venv\Scripts\activate             # Windows PowerShell
-
-# Verificare che Python punti al venv e non al sistema
-which python                       # deve mostrare .../backend/.venv/bin/python
-
-# Installare le dipendenze dell'applicazione
+python3.11 -m venv .venv && source .venv/bin/activate
 pip install fastapi "uvicorn[standard]" httpx pyyaml
-
-# Installare le dipendenze di test
-pip install pytest pytest-asyncio pytest-cov httpx
-
-# Avviare il gateway in modalità sviluppo (hot-reload attivo)
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
 
-Il gateway è pronto quando appare nel log:
-
-```
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-```
-
-Verificare che risponda: `curl http://localhost:8000/health`
-
-Il campo `sentiment_mock: true` nella risposta conferma che il fallback mock è attivo — comportamento atteso senza i container BERT.
-
-### 5.2 Setup frontend Node.js
-
-In un secondo terminale, separato dal backend:
-
-```bash
-# Entrare nella cartella frontend
-cd frontend
-
-# Installare le dipendenze npm (crea node_modules/ — non committare questa cartella)
-npm install
-
-# Avviare in modalità sviluppo con hot-reload
-npm run dev
-```
-
-Il frontend si avvia su `http://localhost:3000`.
-
-> **Importante**: il frontend si aspetta il backend su `http://localhost:8000`. Se si usa una porta diversa, modificare la costante `API_URL` in `frontend/src/App.jsx` riga 7.
-
-### 5.3 Variabili d'ambiente
-
-Il backend legge le seguenti variabili d'ambiente all'avvio. In locale non è necessario configurarle — i valori di default funzionano tutti.
-
-| Variabile | Default | Descrizione |
-|---|---|---|
-| `BERT_SERVICE_URL` | `http://bert-sentiment:5001` | URL microservizio sentiment. In locale usare `http://localhost:5001` se si avvia il container BERT separatamente. |
-| `TOXICITY_SERVICE_URL` | `http://bert-toxicity:5003` | URL microservizio tossicità. |
-| `USE_ARIANNA` | `false` | Se `true`, il gateway chiama Arianna invece del mock per i transcript. |
-| `ARIANNA_BASE_URL` | `http://arianna-host:3000` | URL base di Arianna. Usato solo se `USE_ARIANNA=true`. |
-| `CORS_ORIGINS` | `*` | Origini CORS permesse. In produzione sostituire con il dominio specifico del frontend. |
-
-Per lo sviluppo locale, creare il file `backend/.env` (già incluso nel `.gitignore` — non verrà committato):
-
-```bash
-# backend/.env
-BERT_SERVICE_URL=http://localhost:5001
-TOXICITY_SERVICE_URL=http://localhost:5003
-USE_ARIANNA=false
-CORS_ORIGINS=http://localhost:3000
+# Frontend (altro terminale)
+cd frontend && npm install && npm run dev
 ```
 
 ---
 
 ## 6. Avvio con Docker
 
-Docker Compose è il modo **consigliato** per avviare l'intero stack in modo riproducibile. Gestisce automaticamente la rete interna tra i servizi, i volumi per la cache dei modelli BERT e l'ordine di avvio.
-
-### 6.1 Clonare il repository
-
 ```bash
-git clone <url-repository>
-cd meeting-intelligence
+docker compose up --build    # Prima esecuzione (~700 MB download modelli)
+docker compose up            # Esecuzioni successive
 ```
-
-### 6.2 Stack completo
-
-```bash
-# Prima esecuzione — scarica le immagini Docker e i modelli BERT da HuggingFace (~700 MB, 5–10 min)
-docker compose up --build
-
-# Esecuzioni successive (le immagini sono già in cache)
-docker compose up
-```
-
-> **Attenzione**: il primo avvio scarica i modelli BERT da HuggingFace Hub (~700 MB per sentiment, ~200 MB per toxicity). Richede connessione internet stabile.
-
-Servizi disponibili dopo l'avvio:
 
 | URL | Servizio |
 |---|---|
 | `http://localhost:3000` | Dashboard React |
-| `http://localhost:8000` | API Gateway |
-| `http://localhost:8000/docs` | Swagger UI (documentazione interattiva API) |
-| `http://localhost:8000/redoc` | ReDoc (documentazione alternativa) |
+| `http://localhost:8000/docs` | Swagger UI |
 | `http://localhost:5001/docs` | Swagger BERT Sentiment |
 | `http://localhost:5003/docs` | Swagger BERT Toxicity |
 
-### 6.3 Solo backend + mock (sviluppo frontend)
-
-Se si sta sviluppando solo il frontend e non si vogliono avviare i microservizi BERT pesanti:
-
 ```bash
-# Avvia solo gateway e frontend
-docker compose up backend frontend
-```
-
-Il gateway riconosce automaticamente che i microservizi BERT non sono raggiungibili e attiva il fallback mock. La dashboard funziona normalmente con dati simulati.
-
-### 6.4 Comandi utili Docker
-
-```bash
-# Fermare tutto
-docker compose down
-
-# Fermare e rimuovere anche i volumi (cache modelli)
-# Usare quando si vuole ripartire da zero o cambiare modello
-docker compose down -v
-
-# Vedere i log in tempo reale
-docker compose logs -f
-
-# Log di un servizio specifico
-docker compose logs -f backend
-docker compose logs -f bert-sentiment
-
-# Aprire una shell nel container backend (per debug)
-docker compose exec backend sh
-
-# Forzare rebuild di un singolo servizio
-docker compose up --build backend
-
-# Pulizia completa di tutto Docker (immagini, volumi, network)
-# Usare solo se si vuole liberare spazio disco
-docker system prune -a --volumes
-```
-
-### 6.5 Verifica che tutto funzioni
-
-```bash
-# Health check del gateway
-curl http://localhost:8000/health
-
-# Lista dei meeting disponibili
-curl http://localhost:8000/meetings
-
-# Analisi sentiment di un testo
-curl -X POST http://localhost:8000/sentiment/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"text": "This meeting was incredibly productive!"}'
-
-# Analisi completa del meeting mtg001
-curl http://localhost:8000/meeting/mtg001/analysis
+docker compose down          # Ferma tutto
+docker compose down -v       # Ferma e rimuove volumi (cache modelli)
+docker compose logs -f       # Log in tempo reale
 ```
 
 ---
 
 ## 7. Configurazione
 
-### 7.1 Modificare i dati mock (`mock_data.yaml`)
-
-Il file `backend/config/mock_data.yaml` controlla tutto il layer di dati mock. Struttura:
+Il file `backend/config/mock_data.yaml` controlla il layer mock. La generazione è **deterministica**: stesso `meeting_id` → stesso transcript.
 
 ```yaml
-# Lista delle frasi usate per generare i transcript
-# Aggiungere frasi rappresentative del dominio per test più realistici
-sample_phrases:
+sample_phrases:         # Frasi dal GitHub Gold Standard (Novielli et al. 2020)
   - "This meeting was very productive!"
   - "I disagree with this approach."
-  # ... altre frasi
 
-# Partecipanti disponibili nei meeting mock
 participants:
-  - id: fj93829      # ID univoco (usato nelle chiamate API con ?userId=)
-    name: Alice
-  - id: dkd9320
-    name: Bob
-  - id: abc1234
-    name: Charlie
+  - {id: fj93829, name: Alice}
+  - {id: dkd9320, name: Bob}
+  - {id: abc1234, name: Charlie}
 
-# Definizione dei meeting
-meetings:
-  - id: mtg001                        # ID usato nell'URL /meeting/mtg001/...
-    date: '2024-06-01T10:00:00Z'      # Data del meeting (ISO 8601)
-    num_entries: 30                   # Numero di messaggi nel transcript
-
-# Parametri globali di generazione transcript
-generation:
-  min_duration_seconds: 3            # Durata minima di ogni messaggio audio
-  max_pause_seconds: 4               # Pausa massima tra un messaggio e il successivo
-  chars_per_second: 15               # Velocità di lettura (usata per calcolare durata)
-
-# Override per-meeting (sovrascrivono i parametri globali)
-generation_overrides:
-  mtg001:
-    min_duration_seconds: 2
-    max_pause_seconds: 3
-    chars_per_second: 18
-```
-
-> **Nota**: la generazione è **deterministica**. Lo stesso `mock_data.yaml` produce sempre lo stesso transcript, garantendo la riproducibilità dei test.
-
-### 7.2 Aggiungere un secondo meeting
-
-Per aggiungere un secondo meeting (utile per test di scenario diversi):
-
-```yaml
 meetings:
   - id: mtg001
     date: '2024-06-01T10:00:00Z'
     num_entries: 30
-  - id: mtg002                        # Nuovo meeting
-    date: '2024-06-08T14:30:00Z'
-    num_entries: 20
-```
 
-Dopo la modifica, riavviare il backend (`docker compose restart backend`).
+generation:
+  min_duration_seconds: 3
+  max_pause_seconds: 4
+  chars_per_second: 15
+```
 
 ---
 
 ## 8. API Reference
 
-Il gateway espone un'API REST su porta `8000`. La documentazione interattiva completa è disponibile su `http://localhost:8000/docs`.
+Documentazione interattiva: `http://localhost:8000/docs`
 
 ### Endpoint principali
 
-#### `GET /health`
-Stato del gateway e dei microservizi.
-
-```json
-{
-  "status": "healthy",
-  "service": "backend-gateway",
-  "use_arianna": false,
-  "sentiment_mock": true,
-  "toxicity_mock": true,
-  "meetings": ["mtg001"]
-}
-```
-
-`sentiment_mock: true` indica che il gateway sta usando il fallback rule-based invece del vero BERT.
-
----
-
-#### `GET /meetings`
-Lista dei meeting disponibili.
-
-```json
-{
-  "meetings": [
-    {
-      "id": "mtg001",
-      "date": "2024-06-01T10:00:00Z",
-      "participants_count": 3,
-      "messages_count": 30
-    }
-  ]
-}
-```
-
----
-
-#### `GET /meeting/{meetingId}/analysis`
-**Endpoint principale della piattaforma.** Restituisce il transcript completo con sentiment e tossicità per ogni messaggio, più le statistiche aggregate.
-
-Query parameters opzionali:
-
-| Parametro | Tipo | Descrizione |
+| Endpoint | Metodo | Descrizione |
 |---|---|---|
-| `userId` | string | Filtra i messaggi per partecipante (usa l'`id` del partecipante) |
-| `search` | string | Full-text search sul testo trascritto |
-| `triggersOnly` | bool | Solo messaggi con `contains_trigger: true` |
-| `startTime` / `endTime` | ISO 8601 | Finestra temporale |
-| `limit` | int (default: 200) | Max messaggi restituiti |
-| `offset` | int (default: 0) | Paginazione |
-
-Risposta (struttura semplificata):
-
-```json
-{
-  "transcript": [
-    {
-      "conversation_turn": 1,
-      "participant_name": "Alice",
-      "transcribed_text": "This meeting was very productive!",
-      "created_at": "2024-06-01T10:00:00.000Z",
-      "audio_duration_ms": 5000,
-      "sentiment": {
-        "label": "positive",
-        "score": 0.875,
-        "confidence": 0.92,
-        "polarity": 0.805
-      },
-      "toxicity": {
-        "is_toxic": false,
-        "toxicity_score": 0.04,
-        "severity": "low",
-        "confidence": 0.96
-      }
-    }
-  ],
-  "metadata": {
-    "language": "en",
-    "stats": {
-      "total_messages": 30,
-      "sentiment": {
-        "distribution": { "positive": 18, "neutral": 8, "negative": 4 },
-        "average_score": 0.623,
-        "positive_ratio": 0.6,
-        "average_polarity": 0.312
-      },
-      "toxicity": {
-        "toxic_count": 3,
-        "toxic_ratio": 0.1,
-        "severity_distribution": { "low": 25, "medium": 4, "high": 1 },
-        "average_toxicity_score": 0.148
-      }
-    }
-  }
-}
-```
-
-**Campo `polarity`**: valore in `[-1, +1]` calcolato come `sign(label) × score × confidence`. Rappresenta la polarità pesata per confidenza — un messaggio molto positivo con alta confidenza contribuisce più di uno positivo con confidenza bassa.
+| `/health` | GET | Stato gateway, flag mock |
+| `/meetings` | GET | Lista meeting |
+| `/meeting/{id}/analysis` | GET | Transcript arricchito + statistiche |
+| `/meeting/{id}/start` | POST | Avvia simulazione live |
+| `/meeting/{id}/status` | GET | Stato live (not_started/active/ended) |
+| `/meeting/{id}/reset` | POST | Resetta sessione live |
+| `/sentiment/analyze` | POST | Analisi singolo testo |
+| `/sentiment/batch` | POST | Analisi batch (max 100) |
+| `/toxicity/detect` | POST | Rilevamento singolo testo |
+| `/toxicity/detect/batch` | POST | Rilevamento batch |
 
 ---
 
-#### `POST /sentiment/analyze`
-Analisi sentiment di un singolo testo.
+## 9. Simulazione Live
+
+Il backend è la fonte di verità del tempo. La simulazione non è client-side.
 
 ```bash
-curl -X POST http://localhost:8000/sentiment/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Great work on the presentation!"}'
+# Avvia meeting con join_offset = 120s (entra a meeting già in corso)
+curl -X POST "http://localhost:8000/meeting/mtg001/start?speed=1.0&join_offset=120"
+
+# Controlla lo stato
+curl "http://localhost:8000/meeting/mtg001/status"
+# → { "status": "active", "elapsed_seconds": 127.3, "messages_available": 14, ... }
+
+# Ottieni i messaggi disponibili finora
+curl "http://localhost:8000/meeting/mtg001/analysis"
+
+# Resetta
+curl -X POST "http://localhost:8000/meeting/mtg001/reset"
 ```
 
-```json
-{
-  "label": "positive",
-  "score": 0.87,
-  "confidence": 0.91,
-  "raw_output": { "mock": true },
-  "model_type": "sentiment"
-}
+Il frontend fa polling ogni N secondi (configurabile tramite framerate), aggiornando transcript e timer. Il timer usa un riferimento temporale assoluto per evitare drift:
+```
+wallSec = wallAtSync + (Date.now() - realAtSync) / 1000
 ```
 
 ---
 
-#### `POST /toxicity/detect`
-Rilevamento tossicità di un singolo testo.
+## 10. Dataset di riferimento
+
+Le frasi campione in `mock_data.yaml` derivano da dataset accademici reali.
+
+### Sentiment — GitHub Gold Standard
+
+**Novielli et al., MSR 2020**  
+*"Can We Use SE-specific Sentiment Analysis Tools in a Cross-Platform Setting?"*  
+DOI: [10.1145/3379597.3387446](https://doi.org/10.1145/3379597.3387446)  
+Dataset: [figshare.com/articles/11604597](https://doi.org/10.6084/m9.figshare.11604597)
+
+7.122 commenti GitHub annotati manualmente (κ = .84), distribuiti 43% neutro, 28% positivo, 29% negativo.
+
+### Toxicity — GitHub Issues annotate
+
+**Raman et al., ICSE-NIER 2020**  
+*"Stress and Burnout in Open Source: Toward Finding, Understanding, and Mitigating Unhealthy Interactions"*  
+DOI: [10.1145/3377816.3381732](https://doi.org/10.1145/3377816.3381732)  
+Dataset: [github.com/CMUSTRUDEL/toxicity-detector](https://github.com/CMUSTRUDEL/toxicity-detector)
+
+386 thread di issue GitHub (167 con contenuto tossico), identificati tramite issue bloccate come *too heated*.
+
+---
+
+## 11. Testing
+
+**202 test automatizzati** — non richiedono microservizi BERT attivi.
 
 ```bash
-curl -X POST http://localhost:8000/toxicity/detect \
-  -H "Content-Type: application/json" \
-  -d '{"text": "You are completely useless!"}'
-```
-
-```json
-{
-  "is_toxic": true,
-  "toxicity_score": 0.87,
-  "severity": "high",
-  "confidence": 0.89,
-  "raw_output": { "mock": true },
-  "model_type": "toxicity"
-}
-```
-
----
-
-#### `GET /services/status`
-Stato di salute dei microservizi BERT.
-
-```json
-{
-  "bert_sentiment": { "healthy": true,  "url": "http://bert-sentiment:5001", "port": 5001 },
-  "bert_toxicity":  { "healthy": false, "url": "http://bert-toxicity:5003",  "port": 5003 }
-}
-```
-
----
-
-## 9. Testing
-
-Il progetto ha una suite di test completa organizzata per categoria. Tutti i test usano il layer mock e **non richiedono** i microservizi BERT attivi.
-
-### 9.1 Installare le dipendenze di test
-
-```bash
-cd backend
-
-# Attivare il venv (se non già attivo)
-source .venv/bin/activate
-
+cd backend && source .venv/bin/activate
 pip install pytest pytest-asyncio pytest-cov httpx
+
+pytest                              # Tutti i test
+pytest -m smoke                    # Test base veloci
+pytest -m integration              # End-to-end
+pytest --cov --cov-report=html     # Coverage report
 ```
 
-### 9.2 Eseguire i test
-
-```bash
-# Tutti i test
-pytest
-
-# Solo una categoria (usando i marker)
-pytest -m smoke          # Test di base, veloci (~5 sec)
-pytest -m unit           # Test unitari senza I/O
-pytest -m integration    # Test end-to-end
-pytest -m sentiment      # Solo test sentiment
-pytest -m toxicity       # Solo test tossicità
-pytest -m performance    # Test SLA e tempi di risposta
-pytest -m "not slow"     # Tutto tranne i test lenti
-
-# Con report di coverage
-pytest --cov --cov-report=html
-# Aprire htmlcov/index.html nel browser per il report dettagliato
-
-# Un singolo file di test
-pytest tests/test_api_extended.py -v
-
-# Un singolo test
-pytest tests/test_api_extended.py::TestHealthEndpoints::test_root_endpoint -v
-```
-
-### 9.3 Struttura dei test
-
-| File | Marker | Cosa testa |
+| File | Test | Cosa testa |
 |---|---|---|
-| `test_api_extended.py` | `api`, `smoke` | Tutti gli endpoint HTTP: status code, struttura JSON, campi obbligatori |
-| `test_integration.py` | `integration` | Flussi end-to-end: filtri partecipante, consistenza dati, concorrenza |
-| `test_statistics.py` | `integration` | Correttezza matematica: distribuzione sentiment somma a totale, formula polarity |
-| `test_services_complete.py` | `unit` | Logica business: config loader, predictor normalization, generazione mock |
-| `test_parametrized.py` | vari | Test data-driven: label attese, batch sizes, metodi HTTP vietati |
-| `test_coverage_gap.py` | `unit`, `api` | Branch coverage: path di errore, filter con userId valido/invalido |
-| `test_edge_cases.py` | `edge` | Input boundary: testo vuoto, lunghezza massima, Unicode, emoji, arabo |
-| `test_performance.py` | `performance`, `slow` | SLA: root < 1s, sentiment < 2s, analisi completa < 10s |
+| `test_api_extended.py` | 23 | Endpoint HTTP |
+| `test_coverage_gap.py` | 22 | Branch coverage, validator |
+| `test_services_complete.py` | 20 | Logica business, determinismo |
+| `test_integration.py` | 13 | End-to-end, consistenza |
+| `test_parametrized.py` | 13 | Data-driven, label attesi |
+| `test_statistics.py` | 12 | Invarianti matematiche |
+| `test_edge_cases.py` | 29 | Input boundary, Unicode, stress |
+| `test_performance.py` | 12 | SLA, throughput, p95 |
 
-### 9.4 Convenzioni dei test
-
-I test seguono lo schema **Arrange → Act → Assert**:
-
-```python
-@pytest.mark.sentiment
-def test_analyze_sentiment_single_positive(self, client, sample_texts):
-    # Arrange
-    text = sample_texts["positive"][0]
-
-    # Act
-    response = client.post("/sentiment/analyze", json={"text": text})
-
-    # Assert
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["label"] == "positive"
-    assert 0.0 <= data["score"] <= 1.0
-```
-
-La fixture `client` (definita in `conftest.py`) crea un `TestClient` FastAPI con scope di sessione — viene istanziato una volta sola per l'intera suite, il che rende i test molto più veloci rispetto a una istanziazione per test.
+Copertura: ~95% statement, ~91% branch. Tutti i 202 test completano in 2.73 secondi.
 
 ---
 
-## 10. Integrazione con Arianna
-
-Arianna è la piattaforma di videoconferenza che fornisce i transcript reali. L'integrazione è gestita tramite la variabile d'ambiente `USE_ARIANNA`.
-
-### Attivare la modalità Arianna
+## 12. Integrazione con Arianna
 
 ```bash
-# Nel file backend/.env
+# backend/.env
 USE_ARIANNA=true
-ARIANNA_BASE_URL=http://indirizzo-arianna:3000
+ARIANNA_BASE_URL=http://arianna-host:3000
 ```
 
-Quando `USE_ARIANNA=true`, l'endpoint `/meeting/{meetingId}/analysis` chiama l'API di Arianna invece di usare i dati mock:
-
+Con `USE_ARIANNA=true`, `/meeting/{id}/analysis` chiama:
 ```
-GET http://arianna-host:3000/api/rooms/{meetingId}/transcriptions
+GET {ARIANNA_BASE_URL}/api/rooms/{id}/transcriptions
 ```
 
-### Schema dei dati Arianna
-
-Il sistema si aspetta che Arianna restituisca transcript nel seguente formato. Ogni messaggio deve avere:
-
-| Campo | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `conversation_turn` | int | sì | Numero progressivo del messaggio |
-| `participant_name` | string | sì | Nome del partecipante |
-| `transcribed_text` | string | sì | Testo trascritto |
-| `created_at` | string (ISO 8601) | sì | Timestamp assoluto con millisecondi |
-| `audio_duration_ms` | int | sì | Durata audio in millisecondi |
-| `user_id` | string | no | ID utente Arianna |
-| `room_id` | string | no | ID stanza Arianna |
-| `session_id` | string | no | ID sessione |
-| `language` | string | no | Codice lingua (default: `"en"`) |
-| `contains_trigger` | bool | no | Flag per parole trigger (default: `false`) |
-| `trigger_words` | string[] | no | Lista parole trigger trovate |
-
-### Filtri supportati con Arianna
-
-I query parameter `userId`, `triggersOnly`, `startTime`, `endTime`, `search`, `limit`, `offset` vengono passati direttamente all'API Arianna come parametri. Assicurarsi che l'API Arianna li supporti.
+I filtri `userId`, `startTime`, `endTime`, `search`, `limit`, `offset` vengono passati direttamente ad ARIANNA.
 
 ---
 
-## 11. Troubleshooting
+## 13. Troubleshooting
 
-### I container si avviano ma il frontend non carica
+**Frontend non carica**: `curl http://localhost:8000/health` → backend attivo?
 
-1. Verificare che il backend sia healthy: `curl http://localhost:8000/health`
-2. Controllare i log del backend: `docker compose logs backend`
-3. Verificare che la porta 3000 non sia già occupata: `lsof -i :3000` (Linux/macOS)
+**Container OOMKilled**: aumentare `memory: 3G` in docker-compose.yml per bert-sentiment.
 
-### Il modello BERT non si carica (OOMKilled)
+**Porta in uso**: cambiare mapping in docker-compose.yml, es. `"8080:8000"`.
 
-Il container BERT viene terminato per esaurimento memoria. Soluzioni:
-
-```yaml
-# In docker-compose.yml, aumentare il limite memoria
-services:
-  bert-sentiment:
-    deploy:
-      resources:
-        limits:
-          memory: 3G    # era 2G
-```
-
-Oppure, se la macchina ha poca RAM, sviluppare senza i microservizi BERT (il mock si attiva in automatico).
-
-### Errore "port already in use"
-
-Un'altra applicazione sta già usando la porta. Cambiare il mapping in `docker-compose.yml`:
-
-```yaml
-ports:
-  - "8080:8000"    # Espone sulla porta 8080 invece di 8000
-```
-
-### I test falliscono con `ModuleNotFoundError`
-
-Il virtual environment non è attivato o le dipendenze non sono installate:
-
-```bash
-source .venv/bin/activate
-pip install pytest pytest-asyncio httpx pyyaml fastapi uvicorn
-```
-
-### Il transcript mock è sempre lo stesso
-
-È intenzionale — la generazione è deterministica per garantire la riproducibilità dei test. Per variare il contenuto, modificare `sample_phrases` in `mock_data.yaml`.
-
-### `USE_ARIANNA=true` ma ricevo 500
-
-Arianna non è raggiungibile o restituisce un formato diverso. Verificare:
-1. `ARIANNA_BASE_URL` è corretto e raggiungibile dal container backend
-2. Il transcript di Arianna contiene tutti i campi obbligatori (`conversation_turn`, `participant_name`, `transcribed_text`, `created_at`, `audio_duration_ms`)
+**Test falliscono ModuleNotFoundError**: `pip install pytest pytest-asyncio httpx pyyaml fastapi`.
 
 ---
 
-## 12. Glossario tecnico
+## 14. Glossario
 
-**BERT** (Bidirectional Encoder Representations from Transformers) — famiglia di modelli linguistici pre-addestrati sviluppata da Google. In questo progetto si usano due varianti: `nlptown/bert-base-multilingual-uncased-sentiment` (110M parametri, output 1–5 stelle) e `gravitee-io/bert-small-toxicity` (output binario tossico/non-tossico).
+**BERT** — modello linguistico pre-addestrato di Google. Usati: `nlptown/bert-base-multilingual-uncased-sentiment` e `gravitee-io/bert-small-toxicity`.
 
-**Polarity** — metrica composita in `[-1, +1]` che rappresenta la polarità di un messaggio pesata per confidenza: `polarity = sign(label) × score × confidence`. Un valore di `+0.8` indica un messaggio fortemente positivo con alta confidenza; `0.0` indica neutralità o incertezza.
+**SPI** — Sentiment Polarity Index: `(positivi − negativi) / totale ∈ [-1, +1]` (Liu 2012).
 
-**Severity** — livello di severità della tossicità calcolato dallo score: `low` (< 0.4), `medium` (0.4–0.7), `high` (> 0.7). Le soglie sono conservative per ridurre i falsi positivi.
+**Severity** — intensità tossicità: low (< 0.4), medium (0.4–0.7), high (> 0.7). Indipendente da `is_toxic`.
 
-**Mock Fallback** — classificatore rule-based che si attiva automaticamente quando i microservizi BERT non sono raggiungibili. Usa keyword list (`_POS_KEYWORDS`, `_NEG_KEYWORDS`, `_TOX_KEYWORDS`) e produce risultati deterministici tramite `random.Random(hash(text))`.
+**Mock Fallback** — keyword matching deterministico (`hash(text)` come seed), calibrato sui dataset di Novielli et al. e Raman et al.
 
-**Schema Arianna** — formato dei dati di trascrizione definito dalla piattaforma Arianna. Il campo chiave è `conversation_turn` (intero progressivo) invece del tradizionale `id`, e `participant_name` invece di `nickname` o `author`.
+**MEETING_SESSIONS** — dizionario in-memory `{ meeting_id: { started_at, speed } }`. Non persistente.
 
-**Transcript** — sequenza ordinata di messaggi di una riunione. Ogni elemento rappresenta un singolo intervento, con timestamp, partecipante, testo trascritto e durata audio.
-
-**TestClient (FastAPI)** — client HTTP sincrono fornito da Starlette/FastAPI per i test. Permette di fare richieste all'applicazione senza avviare un vero server HTTP, rendendo i test più veloci e affidabili.
-
-**HuggingFace Hub** — repository pubblico di modelli ML pre-addestrati. Al primo avvio dei container BERT, i modelli vengono scaricati automaticamente e memorizzati nel volume Docker (`bert-model-cache`, `bert-toxicity-cache`).
+**join_offset** — retrodatata `started_at` di `join_offset/speed` secondi per simulare ingresso a meeting in corso.
 
 # docker-compose up --build
 
