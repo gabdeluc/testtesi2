@@ -50,7 +50,7 @@ const NAV_ITEMS = [
   { id: 'sentiment',    icon: '◎', label: 'Sentiment' },
   { id: 'toxicity',     icon: '⚠', label: 'Tossicità' },
   { id: 'participants', icon: '👥', label: 'Partecipanti' },
-  { id: 'stream',        icon: '▤', label: 'Stream' },
+  { id: 'stream',       icon: '▤', label: 'Stream' },
 ]
 
 const tsToSec    = ts => ts ? new Date(ts).getTime() / 1000 : 0
@@ -83,7 +83,7 @@ export default function App() {
   const [allTranscript, setAllTranscript] = useState([])
   const [participants,  setParticipants]  = useState([])
   const [loading, setLoading]             = useState(false)
-  const [error,   setError]                = useState(null)
+  const [error,   setError]               = useState(null)
 
   // ── Playback ──────────────────────────────────────────────────────────────
   const [playbackIndex, setPlaybackIndex] = useState(0)
@@ -107,20 +107,20 @@ export default function App() {
    *   • Controlli Play/Pausa, ⏮ reset, selettore velocità 1×–20×.
    *   • Export JSON/CSV disponibile.
    */
-  const [mode,             setMode]            = useState('live')
-  const [joinOffset,       setJoinOffset]     = useState(0)
+  const [mode,            setMode]           = useState('live')
+  const [joinOffset,      setJoinOffset]     = useState(0)
   // Stato live proveniente dal backend (not_started | active | ended)
-  const [meetingStatus,    setMeetingStatus]  = useState('not_started')
-  const [liveSpeed,        setLiveSpeed]      = useState(1.0)
-  const [liveTotalSec,     setLiveTotalSec]   = useState(0)    // total_seconds dal backend
+  const [meetingStatus,   setMeetingStatus]  = useState('not_started')
+  const [liveSpeed,       setLiveSpeed]      = useState(1.0)
+  const [liveTotalSec,    setLiveTotalSec]   = useState(0)    // total_seconds dal backend
   const pollTimerRef = useRef(null)
 
   // Framerate simulation: l'utente sceglie quanti secondi di meeting
   // vengono "rilasciati" ogni secondo reale. Es: 10 = 10 secondi di meeting/sec.
   // Il backend viene interrogato con ?simulatedOffset=N per ricevere solo
   // i messaggi fino al secondo N del meeting. Simula il ritardo BERT reale.
-  const [frameRate,         setFrameRate]      = useState(0)   // 0 = off
-  const [simOffset,         setSimOffset]      = useState(0)
+  const [frameRate,        setFrameRate]      = useState(0)   // 0 = off
+  const [simOffset,        setSimOffset]      = useState(0)
   const simOffsetRef = useRef(0)
   const frameTimerRef = useRef(null)
   // Riferimento temporale per il timer live: { wallAtSync, realAtSync }
@@ -138,13 +138,13 @@ export default function App() {
   const clockRef = useRef(null)
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  const [activeView,        setActiveView]      = useState('overview')
-  const [meetingList,       setMeetingList]     = useState([])
-  const [selectedMeeting,   setSelectedMeeting] = useState('mtg001')
-  const [showWidgetPanel,   setShowWidgetPanel] = useState(false)
-  const [openSettings,      setOpenSettings]    = useState(null)
-  const [toasts,            setToasts]          = useState([])
-  const [showJoinBanner,    setShowJoinBanner]  = useState(false)
+  const [activeView,       setActiveView]      = useState('overview')
+  const [meetingList,      setMeetingList]     = useState([])
+  const [selectedMeeting,  setSelectedMeeting] = useState('mtg001')
+  const [showWidgetPanel,  setShowWidgetPanel] = useState(false)
+  const [openSettings,     setOpenSettings]    = useState(null)
+  const [toasts,           setToasts]          = useState([])
+  const [showJoinBanner,   setShowJoinBanner]  = useState(false)
 
   const [visibleWidgets, setVisibleWidgets] = useState({
     messages:true, sentimentKPI:true, toxicityKPI:true, healthScore:true,
@@ -238,7 +238,7 @@ export default function App() {
       if (dStatus.elapsed_seconds >= 0 && dStatus.status !== 'ended') {
         liveTimerSync.current = {
           wallAtSync: dStatus.elapsed_seconds,
-          realAtSync: Date.now()
+          realAtSync: Date.now(),
         }
       }
 
@@ -255,7 +255,7 @@ export default function App() {
         setWallSec(totalSec)
       }
     } catch { /* silenzioso — il backend potrebbe essere momentaneamente non disponibile */ }
-  }, [stopPollTimer, stopLiveClock])
+  }, [showToast, stopPollTimer])
 
   const loadMeeting = useCallback(async (meetingId) => {
     setLoading(true); setError(null)
@@ -355,6 +355,8 @@ export default function App() {
 
   // refresh rate rimosso: i dati mock non cambiano tra una fetch e l'altra
 
+
+
   // Framerate: controlla l'intervallo di polling al backend in live mode.
   // Il vecchio sistema client-side (simOffsetRef + findIndex) è sostituito
   // dal polling che usa il backend come fonte di verità.
@@ -408,6 +410,8 @@ export default function App() {
   }, [stopClock])
   // Aggiorna il ref ora che startClock è dichiarato
   useEffect(() => { startClockRef.current = startClock }, [startClock])
+
+
 
   // Ferma il clock quando la pagina va in background (risparmio batteria mobile)
   useEffect(() => {
@@ -476,7 +480,7 @@ export default function App() {
 
   // ── export (solo a meeting finito) ────────────────────────────────────────
   const exportJSON = () => {
-    const exportData = allTranscript
+    const exportData = mode === 'review' ? allTranscript : allTranscript
     const data = { meeting_id:selectedMeeting, exported_at:new Date().toISOString(), mode, join_offset:joinOffset, transcript:exportData, stats:calcStats(exportData) }
     const blob  = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' })
     const a     = Object.assign(document.createElement('a'), {
@@ -486,15 +490,14 @@ export default function App() {
     a.click(); URL.revokeObjectURL(a.href)
     // silent
   }
+
   const exportCSV = () => {
     const exportData = allTranscript
-    const headers = ['timestamp','participant','text','sentiment_label','sentiment_score','toxicity_score','is_toxic']
-    const rows = exportData.map(e => [
-      e.created_at, e.participant_name, `"${e.transcribed_text.replace(/"/g,'""')}"`,
-      e.sentiment.label, e.sentiment.score, e.toxicity.toxicity_score, e.toxicity.is_toxic
-    ])
+    const rows = exportData.map(m =>
+      `${m.conversation_turn},"${m.participant_name}","${m.transcribed_text.replace(/"/g,'""')}",${m.sentiment.label},${Math.round(m.sentiment.score*100)}%,${m.toxicity.is_toxic},${m.toxicity.severity},${m.created_at}`
+    )
     const blob = new Blob(
-      [[headers.join(','), ...rows.map(r=>r.join(','))].join('\n')],
+      [['Turno,Partecipante,Testo,Sentiment,Score,Tossico,Severità,Timestamp', ...rows].join('\n')],
       { type:'text/csv;charset=utf-8;' }
     )
     const a = Object.assign(document.createElement('a'), {
@@ -525,6 +528,9 @@ export default function App() {
   const totalSec   = mode === 'live' && liveTotalSec > 0 ? liveTotalSec : _totalSecFromTs
 
   // Progress bar: in live parte dal punto di ingresso
+  const liveStartTs = joinOffset > 0 && allTranscript[joinOffset]
+    ? tsToSec(allTranscript[joinOffset].created_at) - baseTs
+    : 0
   const progressPct  = mode === 'review'
     ? (totalSec > 0 ? Math.min((wallSec / totalSec) * 100, 100) : 0)
     : (total > 0 ? Math.min((allTranscript.length / total) * 100, 100) : 0)
@@ -579,6 +585,7 @@ export default function App() {
   }
 
   // ── statistiche memoizzate — ricalcolate solo quando liveTranscript cambia ──
+  const memoStats = useMemo(() => calcStats(liveTranscript), [liveTranscript])
   const memoParticipantStats = useMemo(
     () => participants.map(p => ({
       ...p,
@@ -599,7 +606,7 @@ export default function App() {
       { id:'sentimentDist',     name:'Distribuzione Sentiment', desc:'Barra pos/neu/neg in percentuale.' },
       { id:'timelineSentiment', name:'Timeline Sentiment',      desc:'Score per ogni messaggio nel tempo.' },
       { id:'timelineToxicity',  name:'Timeline Tossicità',      desc:'Score tossicità per ogni messaggio.' },
-      { id:'toxicityGauge',     name:'Gauge Tossicità',          desc:'Media tossicità su gauge.' },
+      { id:'toxicityGauge',     name:'Gauge Tossicità',         desc:'Media tossicità su gauge.' },
     ]},
     { title:'Altro', items:[
       { id:'participantRoster', name:'Partecipanti',    desc:'Distribuzione sentiment per partecipante.' },
@@ -642,8 +649,9 @@ export default function App() {
     const wSentDist   = wgt('sentimentDist','Distribuzione Sentiment',true,  <SentimentDistChart stats={S_id('sentimentDist')} />)
     const wTimeSent   = wgt('timelineSentiment','Timeline Sentiment — tocca un punto per vedere il messaggio',true,
       <TimelineChart messages={F('timelineSentiment')} metric="sentiment" color="#00C7BE" yLabel="Score sentiment nlptown [0–100%]" />)
-    const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — tocca un punto per vedere il messaggio',true,
-      <TimelineChart messages={F('timelineToxicity')} metric="toxicity"  color="#FF6B6B" yLabel="Probabilità di tossicità gravitee-io [0–100%]" />)
+    const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — curva per partecipante',true,
+      <TimelineChart messages={liveTranscript} metric="toxicity" yLabel="Probabilità di tossicità gravitee-io [0–100%]"
+        participants={participants} participantColors={PARTICIPANT_COLORS} />)
     const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',!isMobile,
       <ToxicityGauge score={S_id('toxicityGauge').toxicity.toxic_ratio} />)
     const wRoster     = wgt('participantRoster','Partecipanti',true,
@@ -657,7 +665,7 @@ export default function App() {
       sentiment:    [wSentKPI, wSentDist, wTimeSent],
       toxicity:     [wToxKPI, wTimeTox, wGauge],
       participants: [wRoster],
-      stream:        [wMessages, wStream],
+      stream:       [wMessages, wStream],
     }
     return (views[activeView] || views.overview).filter(Boolean)
   }
@@ -666,11 +674,10 @@ export default function App() {
   return (
     <div style={S.app}>
       {/* Toasts */}
-      <div style={{ position:'fixed', top:isMobile?10:20, right:isMobile?10:20, zIndex:1000, display:'flex', flexDirection:'column', alignItems:'flex-end' }}>
-        {toasts.map(t => <Toast key={t.id} {...t} onClose={() => setToasts(p => p.filter(x => x.id !== t.id))} />)}
-      </div>
+      {/* toast rimossi — non servono su mobile */}
 
       <div style={{ display:'flex', minHeight:'100vh' }}>
+
 
         {/* ── Main content ──────────────────────────────────────────────── */}
         <div style={{ flex:1, minWidth:0, paddingBottom: isMobile ? 72 : 0 }}>
@@ -706,31 +713,43 @@ export default function App() {
                       borderRadius:8 }}>
                       <span style={{ width:8, height:8, borderRadius:'50%', background:'#FF3B30',
                         animation:'pulse 1.5s ease-in-out infinite', flexShrink:0 }} />
-                      <span style={{ fontSize:12, fontWeight:700, color:'#FF3B30', textTransform:'uppercase', letterSpacing:'0.5px' }}>Live</span>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#FF3B30' }}>IN DIRETTA</span>
                     </div>
 
-                    <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.05)', borderRadius:8, padding:'4px 10px' }}>
-                      <span style={{ fontSize:11, color:'#8e8e93', fontWeight:600 }}>POLL</span>
-                      <select value={frameRate} onChange={e => setFrameRate(Number(e.target.value))}
-                        style={{ background:'none', border:'none', color:'#fff', fontSize:12, fontWeight:700, outline:'none', cursor:'pointer' }}>
-                        {FRAMERATES.map(f => <option key={f.value} value={f.value} style={{ background:'#1c1c1e' }}>{f.label}</option>)}
-                      </select>
-                    </div>
-
-                    <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff', marginLeft:4 }}>
-                      {secToLabel(wallSec)}
+                    <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff' }}>
+                      {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
                     </span>
+
+                    {/* Selettore framerate: 0=real-time, N=N× accelerato */}
+                    <select value={frameRate}
+                      onChange={e => setFrameRate(Number(e.target.value))}
+                      style={S.select}
+                      title="Velocità di avanzamento del meeting (0=tempo reale)">
+                      {FRAMERATES.map(o => <option key={o.value} value={o.value}>⚡ {o.label}</option>)}
+                    </select>
+
                   </>
+                )}
+
+                {/* Badge CONCLUSO — sostituisce IN DIRETTA a fine live */}
+                {liveEnded && (
+                  <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
+                    background:'rgba(52,199,89,0.15)', border:'0.5px solid rgba(52,199,89,0.4)',
+                    borderRadius:8 }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:'#34C759' }}>✓ CONCLUSO</span>
+                  </div>
                 )}
 
                 {/* ── REVIEW ──────────────────────────────────────────── */}
                 {mode === 'review' && (
                   <>
-                    <button onClick={handlePlayPause} style={{ ...S.btn, background: isPlaying ? '#FF9500' : '#34C759', width:40, padding:0, fontSize:16 }}>
-                      {isPlaying ? '⏸' : '▶'}
+                    <button onClick={handleReset} style={S.btn} title="Torna all'inizio">⏮</button>
+                    <button onClick={handlePlayPause}
+                      style={{ ...S.btn, background: isPlaying ? '#FF9500' : '#007AFF', minWidth:86 }}>
+                      {isPlaying ? '⏸ Pausa' : isFinished ? '↺ Riparti' : '▶ Play'}
                     </button>
-                    <button onClick={handleReset} style={{ ...S.btn, width:40, padding:0, fontSize:16 }}>⏮</button>
 
+                    {/* Selettore velocità — solo in review */}
                     <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.07)', borderRadius:8, padding:3 }}>
                       {SPEEDS.map(s => (
                         <button key={s} onClick={() => handleSpeedChange(s)}
@@ -766,6 +785,7 @@ export default function App() {
                   : `${playbackIndex} / ${total} messaggi`}
               </span>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+
                 <span style={{ color: isPlaying ? '#007AFF' : isFinished ? '#34C759' : '#636366' }}>
                   {mode==='live'  && isPlaying   && '● In diretta'}
                   {mode==='live'  && liveEnded   && '✓ Meeting concluso'}
@@ -901,7 +921,7 @@ export default function App() {
                         <button
                           style={{ border:'none', borderRadius:7, padding:'5px 12px', cursor:'pointer', fontSize:12, fontWeight:600, flexShrink:0,
                             background: visibleWidgets[w.id]!==false ? '#34C759' : '#3a3a3c',
-                            color:       visibleWidgets[w.id]!==false ? '#fff'      : '#8e8e93' }}
+                            color:      visibleWidgets[w.id]!==false ? '#fff'     : '#8e8e93' }}
                           onClick={() => toggleWidget(w.id)}>
                           {visibleWidgets[w.id]!==false ? 'ON' : 'OFF'}
                         </button>
@@ -972,6 +992,7 @@ function SentimentKPI({ stats }) {
   const negPct = Math.round(negative/n*100)
   return (
     <div>
+
       <div style={{ display:'flex', height:8, borderRadius:4, overflow:'hidden', marginBottom:8 }}>
         <div style={{ width:`${posPct}%`, background:'#34C759', transition:'width 0.4s' }} />
         <div style={{ width:`${neuPct}%`, background:'#FFCC00', transition:'width 0.4s' }} />
@@ -982,6 +1003,7 @@ function SentimentKPI({ stats }) {
         <span style={{ color:'#FFCC00' }}>● Neutri: {neutral} ({neuPct}%)</span>
         <span style={{ color:'#FF3B30' }}>● Negativi: {negative} ({negPct}%)</span>
       </div>
+
     </div>
   )
 }
@@ -1037,11 +1059,9 @@ function SentimentDistChart({ stats }) {
 }
 
 // ─── TimelineChart ────────────────────────────────────────────────────────────
-// Per il sentiment mostra 3 curve sovrapposte (positive/neutral/negative),
-// ognuna con il numero di messaggi di quella categoria per finestra temporale.
-// Per la toxicity mostra la probabilità di tossicità per messaggio.
-// Supporta filtro per partecipante tramite la prop `allMessages`.
-function TimelineChart({ messages, metric, yLabel }) {
+// sentiment: 3 curve sovrapposte (positivi/neutri/negativi) con score nlptown [0-100%]
+// toxicity:  una curva per ogni partecipante con probabilità di tossicità [0-100%]
+function TimelineChart({ messages, metric, yLabel, participants=[], participantColors=[] }) {
   if (!messages?.length) return <Empty />
 
   const [tooltip, setTooltip] = React.useState(null)
@@ -1053,18 +1073,14 @@ function TimelineChart({ messages, metric, yLabel }) {
     return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`
   }
 
-  // Dati per ogni punto
   const pts = messages.map(m => ({
     lbl:   fmt(m.created_at),
     nick:  m.participant_name,
     text:  m.transcribed_text,
     label: metric === 'sentiment' ? m.sentiment.label : (m.toxicity.is_toxic ? 'tossico' : 'non tossico'),
-    // Per sentiment: score normalizzato [0,1] proveniente direttamente dal modello nlptown
-    // Per toxicity:  probabilità di tossicità [0,1] dal modello gravitee-io
     y: metric === 'sentiment'
       ? Math.round(m.sentiment.score * 100)
       : Math.round(m.toxicity.toxicity_score * 100),
-    // Valori per le 3 curve sentiment (1 = questo msg appartiene a questa categoria, 0 = no)
     isPos: m.sentiment.label === 'positive' ? 1 : 0,
     isNeu: m.sentiment.label === 'neutral'  ? 1 : 0,
     isNeg: m.sentiment.label === 'negative' ? 1 : 0,
@@ -1073,18 +1089,39 @@ function TimelineChart({ messages, metric, yLabel }) {
   const step  = Math.max(1, Math.floor(messages.length / 8))
   const xLbls = pts.map((p, i) => (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : '')
 
-  // Dataset: per sentiment 3 curve sovrapposte, per toxicity 1 curva
+  // Per toxicity: una curva per ogni partecipante, colore assegnato dall'indice
+  const toxDatasets = React.useMemo(() => {
+    if (metric !== 'toxicity') return []
+    const names = participants.length
+      ? participants.map(p => p.name)
+      : [...new Set(messages.map(m => m.participant_name))]
+    return names.map((name, i) => {
+      const color = participantColors[i % participantColors.length] || '#888'
+      return {
+        label: name,
+        data: pts.map(p => p.nick === name ? p.y : null),
+        borderColor: color,
+        backgroundColor: color + '20',
+        borderWidth: 1.5,
+        pointRadius: 4,
+        pointHoverRadius: 8,
+        pointBackgroundColor: pts.map(p =>
+          p.nick === name ? (p.label === 'tossico' ? '#FF3B30' : color) : 'transparent'
+        ),
+        fill: false,
+        tension: 0.1,
+        spanGaps: false,
+      }
+    })
+  }, [metric, messages, participants, participantColors, pts])
+
   const datasets = metric === 'sentiment'
     ? [
-        { label: 'Positivi',  data: pts.map(p => p.isPos ? p.y : null), borderColor: '#34C759', backgroundColor: '#34C75920', borderWidth: 1.5, pointRadius: 4, pointBackgroundColor: '#34C759', fill: false, tension: 0.1, spanGaps: false },
-        { label: 'Neutri',    data: pts.map(p => p.isNeu ? p.y : null), borderColor: '#FFCC00', backgroundColor: '#FFCC0020', borderWidth: 1.5, pointRadius: 4, pointBackgroundColor: '#FFCC00', fill: false, tension: 0.1, spanGaps: false },
-        { label: 'Negativi',  data: pts.map(p => p.isNeg ? p.y : null), borderColor: '#FF3B30', backgroundColor: '#FF3B3020', borderWidth: 1.5, pointRadius: 4, pointBackgroundColor: '#FF3B30', fill: false, tension: 0.1, spanGaps: false },
+        { label:'Positivi',  data:pts.map(p=>p.isPos?p.y:null), borderColor:'#34C759', backgroundColor:'#34C75920', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#34C759', fill:false, tension:0.1, spanGaps:false },
+        { label:'Neutri',    data:pts.map(p=>p.isNeu?p.y:null), borderColor:'#FFCC00', backgroundColor:'#FFCC0020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FFCC00', fill:false, tension:0.1, spanGaps:false },
+        { label:'Negativi',  data:pts.map(p=>p.isNeg?p.y:null), borderColor:'#FF3B30', backgroundColor:'#FF3B3020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FF3B30', fill:false, tension:0.1, spanGaps:false },
       ]
-    : [
-        { label: 'Probabilità di tossicità', data: pts.map(p => p.y), borderColor: '#FF6B6B', backgroundColor: '#FF6B6B20', borderWidth: 1.5, pointRadius: 5, pointHoverRadius: 9, pointHoverBorderWidth: 2, pointHoverBorderColor: '#fff',
-          pointBackgroundColor: pts.map(p => p.label === 'tossico' ? '#FF3B30' : '#34C759'),
-          fill: true, tension: 0.1 },
-      ]
+    : toxDatasets
 
   const handleChartClick = (event) => {
     const chart = chartRef.current
@@ -1094,12 +1131,10 @@ function TimelineChart({ messages, metric, yLabel }) {
     const idx = elements[0].index
     const pt  = pts[idx]
     const rect = event.currentTarget.getBoundingClientRect()
-    const ex   = event.nativeEvent.clientX ?? (event.nativeEvent.touches?.[0]?.clientX ?? 0)
-    const ey   = event.nativeEvent.clientY ?? (event.nativeEvent.touches?.[0]?.clientY ?? 0)
-    const rx   = ex - rect.left
-    const ry   = ey - rect.top
+    const ex = event.nativeEvent.clientX ?? (event.nativeEvent.touches?.[0]?.clientX ?? 0)
+    const ey = event.nativeEvent.clientY ?? (event.nativeEvent.touches?.[0]?.clientY ?? 0)
     if (tooltip && tooltip.idx === idx) { setTooltip(null); return }
-    setTooltip({ x: rx, y: ry, idx, pt })
+    setTooltip({ x: ex - rect.left, y: ey - rect.top, idx, pt })
   }
 
   const tp = tooltip?.pt
@@ -1110,9 +1145,7 @@ function TimelineChart({ messages, metric, yLabel }) {
     : '#fff'
 
   return (
-    <div style={{ height: 280, position: 'relative' }}
-      onClick={handleChartClick}
-      onTouchEnd={handleChartClick}>
+    <div style={{ height:280, position:'relative' }} onClick={handleChartClick} onTouchEnd={handleChartClick}>
 
       {tooltip && tp && (() => {
         const TW = 220
@@ -1135,7 +1168,7 @@ function TimelineChart({ messages, metric, yLabel }) {
             </div>
             <div style={{ fontSize:11, color:'#ebebf5cc', lineHeight:1.5,
               borderTop:'0.5px solid rgba(255,255,255,0.08)', paddingTop:8 }}>
-              {tp.text.length > 120 ? tp.text.slice(0, 120) + '…' : tp.text}
+              {tp.text.length > 120 ? tp.text.slice(0,120) + '…' : tp.text}
             </div>
           </div>
         )
@@ -1145,19 +1178,19 @@ function TimelineChart({ messages, metric, yLabel }) {
         ref={chartRef}
         data={{ labels: xLbls, datasets }}
         options={{
-          responsive: true, maintainAspectRatio: false, animation: { duration: 150 },
-          plugins: {
-            legend: { display: metric === 'sentiment', position: 'bottom',
-              labels: { color: '#8e8e93', font: { size: 11 }, boxWidth: 12 } },
-            tooltip: { enabled: false }
+          responsive:true, maintainAspectRatio:false, animation:{ duration:150 },
+          plugins:{
+            legend:{ display:true, position:'bottom',
+              labels:{ color:'#8e8e93', font:{ size:11 }, boxWidth:12 } },
+            tooltip:{ enabled:false }
           },
-          interaction: { mode: 'nearest', axis: 'x', intersect: false },
-          scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8e8e93', maxRotation: 0 },
-              title: { display: true, text: "Minuti dall'inizio del meeting", color: '#636366', font: { size: 10 } } },
-            y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' },
-              ticks: { color: '#8e8e93', callback: v => v + '%' },
-              title: { display: true, text: yLabel, color: '#636366', font: { size: 10 } } }
+          interaction:{ mode:'nearest', axis:'x', intersect:false },
+          scales:{
+            x:{ grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93', maxRotation:0 },
+              title:{ display:true, text:"Minuti dall'inizio del meeting", color:'#636366', font:{ size:10 } } },
+            y:{ min:0, max:100, grid:{ color:'rgba(255,255,255,0.05)' },
+              ticks:{ color:'#8e8e93', callback:v=>v+'%' },
+              title:{ display:true, text:yLabel, color:'#636366', font:{ size:10 } } }
           }
         }}
       />
@@ -1287,6 +1320,6 @@ const S = {
   grid:    { maxWidth:1400, margin:'0 auto', padding:'clamp(0.75rem,3vw,1.25rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
   kpiVal:  { fontSize:32, fontWeight:700, color:'#fff', lineHeight:1 },
   kpiLab:  { fontSize:11, color:'#8e8e93', marginTop:3 },
-  bottomNav:     { position:'fixed', bottom:0, left:0, right:0, zIndex:100, background:'rgba(20,20,22,0.98)', borderTop:'0.5px solid rgba(255,255,255,0.1)', display:'flex', paddingBottom:'max(env(safe-area-inset-bottom, 0px), 8px)' },
+  bottomNav:    { position:'fixed', bottom:0, left:0, right:0, zIndex:100, background:'rgba(20,20,22,0.98)', borderTop:'0.5px solid rgba(255,255,255,0.1)', display:'flex', paddingBottom:'max(env(safe-area-inset-bottom, 0px), 8px)' },
   bottomNavItem:{ flex:1, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'8px 4px 6px' },
 }
