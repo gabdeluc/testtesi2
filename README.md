@@ -28,7 +28,7 @@
 Meeting Intelligence è un sistema distribuito che analizza le trascrizioni di riunioni in tempo reale. Ogni messaggio del transcript viene classificato su due dimensioni indipendenti:
 
 - **Sentiment** — tono del messaggio (positivo/neutro/negativo), normalizzato in `[0, 1]` con Sentiment Polarity Index di sessione in `[-1, +1]`
-- **Tossicità** — linguaggio offensivo o inappropriato, score `[0, 1]` con soglia binaria a `0.5` e tre livelli di severity (low/medium/high)
+- **Tossicità** — linguaggio offensivo o inappropriato, score `[0, 1]` con soglia binaria a `0.6`
 
 Il sistema è progettato per integrarsi con la piattaforma **ARIANNA** (videoconferenza e ASR), ma include un layer di simulazione live lato backend e dati mock che permettono sviluppo e test completamente autonomi.
 
@@ -75,9 +75,9 @@ Il sistema è progettato per integrarsi con la piattaforma **ARIANNA** (videocon
 
 **API Gateway** — unico punto di ingresso per il frontend; `asyncio.gather` esegue le due inferenze BERT in parallelo.
 
-**Abstract Predictor** — `SentimentPredictor` e `ToxicityDetector` attivano il fallback mock al primo errore di connessione, in modo permanente.
+**Abstract Predictor** — `SentimentPredictor` e `ToxicityDetector` tentano di raggiungere i rispettivi microservizi BERT. Se il microservizio non risponde, attivano il **Mock Fallback** in modo permanente per la sessione corrente.
 
-**Mock Fallback** — classificatori rule-based deterministici (`hash(text)` come seed), attivi quando i microservizi BERT non sono raggiungibili.
+**Mock Fallback** — classificatori rule-based deterministici attivi quando i microservizi BERT non sono raggiungibili. Il sentiment viene stimato tramite keyword matching (parole positive/negative), la tossicità tramite keyword offensive. L'output è deterministico (`hash(text)` come seed RNG). **⚠ Attenzione**: i dati prodotti dal mock non provengono dai modelli BERT e non devono essere interpretati come predizioni reali — servono esclusivamente per sviluppo e test in assenza dei microservizi. L'endpoint `/health` espone il flag `use_mock: true` per segnalare questa modalità degradata.
 
 **Singleton** — ogni microservizio carica il modello una volta al boot e lo condivide tra tutte le richieste.
 
@@ -127,7 +127,7 @@ meeting-intelligence/
 
 ## 5. Setup locale (senza Docker)
 
-> I microservizi BERT **non vengono avviati**. Il mock fallback si attiva automaticamente.
+> I microservizi BERT **non vengono avviati**. Il Mock Fallback si attiva automaticamente e visualizza dati sintetici (non BERT). Utile solo per sviluppo UI — non usare per validare i modelli.
 
 ```bash
 # Backend
@@ -293,18 +293,61 @@ Copertura: ~95% statement, ~91% branch. Tutti i 202 test completano in 2.73 seco
 
 ## 12. Integrazione con Arianna
 
+### Modalità operativa in produzione
+
+In produzione, la fonte dati è ARIANNA. La modalità con dati mock è il caso **eccezionale**, da abilitare esplicitamente durante lo sviluppo. Il sistema funziona così:
+
+1. Il Backend Gateway legge la variabile `USE_ARIANNA` all'avvio.
+2. Se `USE_ARIANNA=true`, ogni chiamata a `/meeting/{id}/analysis` interroga l'API di ARIANNA per ottenere le trascrizioni reali della stanza.
+3. I modelli BERT analizzano le trascrizioni ricevute in tempo reale.
+4. Se `USE_ARIANNA=false` (default di sviluppo), il backend genera trascrizioni deterministiche da `mock_data.yaml`.
+
+### Configurazione per produzione
+
 ```bash
 # backend/.env
 USE_ARIANNA=true
-ARIANNA_BASE_URL=http://arianna-host:3000
+ARIANNA_BASE_URL=http://arianna-host:3000   # URL del backend ARIANNA
+
+# Verifica che i microservizi BERT siano raggiungibili:
+# http://localhost:5001/health → {"status": "ok"}
+# http://localhost:5003/health → {"status": "ok"}
 ```
 
-Con `USE_ARIANNA=true`, `/meeting/{id}/analysis` chiama:
+**⚠ Senza i microservizi BERT attivi**, il sistema attiva il Mock Fallback e visualizza dati sintetici, non reali. L'endpoint `/health` espone `"use_mock": true` in questo caso.
+
+### Flusso dati da ARIANNA
+
+Con `USE_ARIANNA=true`, l'endpoint `/meeting/{id}/analysis` chiama:
+
 ```
 GET {ARIANNA_BASE_URL}/api/rooms/{id}/transcriptions
 ```
 
-I filtri `userId`, `startTime`, `endTime`, `search`, `limit`, `offset` vengono passati direttamente ad ARIANNA.
+I parametri di filtro `userId`, `startTime`, `endTime`, `search`, `limit`, `offset` vengono passati direttamente come query parameter. La risposta viene deserializzata nel formato interno `TranscriptEntry` e processata identicamente alle trascrizioni mock.
+
+### Selezione del meeting
+
+L'endpoint `/meetings` restituisce la lista dei meeting disponibili (da `mock_data.yaml` in modalità mock, o da ARIANNA in produzione). Il frontend mostra un selettore se sono disponibili più meeting. In produzione la lista corrisponderà alle stanze attive o recenti della piattaforma ARIANNA.
+
+### Avvio in produzione
+
+```bash
+# 1. Avvia lo stack completo (BERT + Gateway + Frontend)
+docker compose up
+
+# 2. Verifica lo stato
+curl http://localhost:8000/health
+# → { "status": "ok", "use_mock": false, ... }
+
+# 3. La dashboard si connette automaticamente a ARIANNA tramite il Gateway
+```
+
+In modalità di sviluppo, per usare i dati mock in modo esplicito:
+
+```bash
+USE_ARIANNA=false docker compose up
+```
 
 ---
 
@@ -316,7 +359,12 @@ I filtri `userId`, `startTime`, `endTime`, `search`, `limit`, `offset` vengono p
 
 **Porta in uso**: cambiare mapping in docker-compose.yml, es. `"8080:8000"`.
 
-**Test falliscono ModuleNotFoundError**: `pip install pytest pytest-asyncio httpx pyyaml fastapi`.
+**Test falliscono ModuleNotFoundError**:
+```bash
+pip install pytest pytest-asyncio httpx pyyaml fastapi
+```
+
+**`USE_ARIANNA=true` → 502**: verificare `ARIANNA_BASE_URL` e che la risposta contenga il campo `transcriptions`.
 
 ---
 
@@ -326,7 +374,7 @@ I filtri `userId`, `startTime`, `endTime`, `search`, `limit`, `offset` vengono p
 
 **SPI** — Sentiment Polarity Index: `(positivi − negativi) / totale ∈ [-1, +1]` (Liu 2012).
 
-**Severity** — intensità tossicità: low (< 0.4), medium (0.4–0.7), high (> 0.7). Indipendente da `is_toxic`.
+**Probabilità di tossicità** — output diretto del modello gravitee-io: valore continuo `[0,1]`. Messaggi con probabilità > 0.6 sono classificati come tossici (`is_toxic=true`). Costante `TOXICITY_THRESHOLD = 0.6` nel backend.
 
 **Mock Fallback** — keyword matching deterministico (`hash(text)` come seed), calibrato sui dataset di Novielli et al. e Raman et al.
 
