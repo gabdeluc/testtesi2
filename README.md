@@ -333,12 +333,3 @@ I filtri `userId`, `startTime`, `endTime`, `search`, `limit`, `offset` vengono p
 **MEETING_SESSIONS** — dizionario in-memory `{ meeting_id: { started_at, speed } }`. Non persistente.
 
 **join_offset** — retrodatata `started_at` di `join_offset/speed` secondi per simulare ingresso a meeting in corso.
-
-# docker-compose up --build
-
-# docker-compose down -v
-
-# docker system prune -a --volumes
-# docker-compose exec backend sh
-
-# pip install pytest pytest-asyncio pytest-cov httpx --break-system-packages

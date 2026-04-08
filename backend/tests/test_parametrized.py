@@ -137,7 +137,7 @@ class TestToxicityParametrized:
         response = client.post("/toxicity/detect", json={"text": safe_text})
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["toxicity_score"] < 0.5
+        assert data["toxicity_score"] < 0.6
         assert data["is_toxic"]       == False
         assert data["severity"]       in ["low", "medium"]
 

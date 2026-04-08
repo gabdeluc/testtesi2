@@ -131,7 +131,7 @@ class TestToxicityDetector:
         import httpx
         detector = ToxicityDetector("http://test:5003", httpx.AsyncClient())
         assert detector is not None
-        assert detector.threshold == 0.5
+        assert detector.threshold == 0.6
 
     @pytest.mark.unit
     def test_get_severity_low(self):
@@ -237,4 +237,4 @@ class TestPredictorFactory:
         factory  = PredictorFactory(httpx.AsyncClient())
         detector = factory.create_toxicity_detector("http://test:5003")
         assert detector is not None
-        assert detector.threshold == 0.5
+        assert detector.threshold == 0.6

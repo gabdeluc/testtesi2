@@ -101,7 +101,7 @@ export default function App() {
   const [visibleWidgets, setVisibleWidgets] = useState({
     messages:true, sentimentKPI:true, toxicityKPI:true, healthScore:true,
     sentimentDist:true, timelineSentiment:true, timelineToxicity:true,
-    toxicityGauge:true, participantRoster:true, messageStream:true
+    participantRoster:true, messageStream:true
   })
 
   const [widgetConfigs, setWidgetConfigs] = useState({
@@ -112,7 +112,6 @@ export default function App() {
     sentimentDist:     { participantFilter:null },
     timelineSentiment: { participantFilter:null },
     timelineToxicity:  { participantFilter:null },
-    toxicityGauge:     { participantFilter:null },
     participantRoster: { participantFilter:null },
     messageStream:     { participantFilter:null, limit:30 },
   })
@@ -403,7 +402,6 @@ export default function App() {
       { id:'sentimentDist',     name:'Distribuzione Sentiment', desc:'Barra pos/neu/neg in percentuale.' },
       { id:'timelineSentiment', name:'Timeline Sentiment',      desc:'Score nlptown per ogni messaggio nel tempo.' },
       { id:'timelineToxicity',  name:'Timeline Tossicità',      desc:'Probabilità di tossicità per partecipante.' },
-      { id:'toxicityGauge',     name:'Gauge Tossicità',         desc:'% messaggi sopra soglia 60%.' },
     ]},
     { title:'Altro', items:[
       { id:'participantRoster', name:'Partecipanti',    desc:'Distribuzione sentiment per partecipante.' },
@@ -450,14 +448,13 @@ export default function App() {
     const wTimeTox  = wgt('timelineToxicity','Timeline Tossicità — curva per partecipante',true,
       <TimelineChart messages={liveTranscript} metric="toxicity" yLabel="Probabilità di tossicità gravitee-io [0–100%]"
         participants={participants} participantColors={PARTICIPANT_COLORS} />)
-    const wGauge    = wgt('toxicityGauge','Messaggi Tossici (%)',!isMobile,
-      <ToxicityGauge score={S_id('toxicityGauge').toxicity.toxic_ratio} />)
+
     const wRoster   = wgt('participantRoster','Partecipanti',true,
       <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
     const wStream   = wgt('messageStream','Stream Messaggi',true,
       <MessageStream messages={F('messageStream')} limit={widgetConfigs.messageStream?.limit||30}
         participantColors={PARTICIPANT_COLORS} participants={participants} />)
-    return [wMessages, wHealth, wSentKPI, wToxKPI, wSentDist, wTimeSent, wTimeTox, wGauge, wStream, wRoster].filter(Boolean)
+    return [wMessages, wHealth, wSentKPI, wToxKPI, wSentDist, wTimeSent, wTimeTox, wStream, wRoster].filter(Boolean)
   }
 
   // ── render ────────────────────────────────────────────────────────────────
@@ -508,7 +505,7 @@ export default function App() {
                       </select>
                     </div>
                     <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff', marginLeft:4 }}>
-                      {secToLabel(wallSec)}
+                      {secToLabel(wallSec)}{totalSec > 0 ? ` / ${secToLabel(totalSec)}` : ''}
                     </span>
                   </>
                 )}
@@ -902,28 +899,6 @@ function TimelineChart({ messages, metric, yLabel, participants=[], participantC
           }
         }}
       />
-    </div>
-  )
-}
-
-// ─── ToxicityGauge ────────────────────────────────────────────────────────────
-function ToxicityGauge({ score }) {
-  const p   = Math.min(Math.max(score||0,0),1)
-  const pct = Math.round(p*100)
-  const col = p<0.33?'#34C759':p<0.66?'#FF9500':'#FF3B30'
-  const lbl = p<0.33?'Bassa':p<0.66?'Media':'Alta'
-  return (
-    <div style={{ height:140, position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <Doughnut
-        data={{ datasets:[{ data:[p,1-p], backgroundColor:[col,'rgba(255,255,255,0.07)'], borderWidth:0, circumference:180, rotation:270 }]}}
-        options={{ responsive:true, maintainAspectRatio:false, cutout:'75%', animation:{ duration:300 },
-          plugins:{ legend:{ display:false }, tooltip:{ enabled:false } } }}
-      />
-      <div style={{ position:'absolute', bottom:8, textAlign:'center' }}>
-        <div style={{ fontSize:22, fontWeight:700, color:col }}>{pct}%</div>
-        <div style={{ fontSize:11, color:'#8e8e93' }}>Tossicità {lbl}</div>
-        <div style={{ fontSize:10, color:'#636366' }}>% messaggi con probabilità &gt; 60%</div>
-      </div>
     </div>
   )
 }

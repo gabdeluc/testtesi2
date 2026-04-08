@@ -5,7 +5,7 @@ Aggiornato per la piattaforma attuale:
   • Gauge usa toxic_ratio (non average_toxicity_score)
   • Frontend usa Sentiment Polarity Index (pos-neg)/total
   • test_severity_and_toxic_count_independent verifica la distinzione
-    tra messaggi tossici (soglia 0.5) e severity (score grezzo)
+    tra messaggi tossici (soglia 0.6) e severity (score grezzo)
 """
 import pytest
 from fastapi import status
@@ -115,26 +115,21 @@ class TestStatisticalValidation:
         assert all(v >= 0 for v in sev.values())
 
     @pytest.mark.integration
-    def test_gauge_uses_toxic_ratio_not_average_score(self, client, valid_meeting_ids):
+    def test_toxic_ratio_zero_when_no_toxic_messages(self, client, valid_meeting_ids):
         """
-        Il gauge frontend usa toxic_ratio, non average_toxicity_score.
-        Con 0 messaggi tossici, toxic_ratio = 0.0 → gauge mostra 0%.
-        average_toxicity_score potrebbe essere >0 ma non viene più usato dal gauge.
+        Con 0 messaggi tossici (score > TOXICITY_THRESHOLD=0.6), toxic_ratio deve essere 0.0.
         """
         data = client.get(f"/meeting/{valid_meeting_ids[0]}/analysis").json()
         tox  = data["metadata"]["stats"]["toxicity"]
         if tox["toxic_count"] == 0:
-            assert tox["toxic_ratio"] == 0.0, (
-                "Con 0 messaggi tossici, toxic_ratio deve essere 0.0. "
-                "Il gauge usa questo valore — non average_toxicity_score."
-            )
+            assert tox["toxic_ratio"] == 0.0
 
     @pytest.mark.integration
     def test_severity_independent_from_toxic_threshold(self, client, valid_meeting_ids):
         """
         Severity e is_toxic sono metriche indipendenti:
         severity descrive lo score grezzo su TUTTI i messaggi,
-        is_toxic indica solo i messaggi sopra soglia 0.5.
+        is_toxic indica solo i messaggi sopra soglia 0.6 (TOXICITY_THRESHOLD).
         Un meeting con 0 tossici può avere messaggi in severity LOW/MEDIUM.
         """
         data       = client.get(f"/meeting/{valid_meeting_ids[0]}/analysis").json()
@@ -146,7 +141,7 @@ class TestStatisticalValidation:
         # Severity copre tutti i messaggi
         assert sev["low"] + sev["medium"] + sev["high"] == total
 
-        # toxic_count copre solo quelli sopra soglia 0.5
+        # toxic_count copre solo quelli sopra soglia 0.6 (TOXICITY_THRESHOLD)
         assert tox["toxic_count"] <= total
 
         # I due contatori non devono necessariamente coincidere
