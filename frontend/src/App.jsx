@@ -1110,16 +1110,16 @@ function TimelineChart({ messages, metric, yLabel, participants=[], participantC
         ),
         fill: false,
         tension: 0.1,
-        spanGaps: false,
+        spanGaps: true,
       }
     })
   }, [metric, messages, participants, participantColors, pts])
 
   const datasets = metric === 'sentiment'
     ? [
-        { label:'Positivi',  data:pts.map(p=>p.isPos?p.y:null), borderColor:'#34C759', backgroundColor:'#34C75920', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#34C759', fill:false, tension:0.1, spanGaps:false },
-        { label:'Neutri',    data:pts.map(p=>p.isNeu?p.y:null), borderColor:'#FFCC00', backgroundColor:'#FFCC0020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FFCC00', fill:false, tension:0.1, spanGaps:false },
-        { label:'Negativi',  data:pts.map(p=>p.isNeg?p.y:null), borderColor:'#FF3B30', backgroundColor:'#FF3B3020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FF3B30', fill:false, tension:0.1, spanGaps:false },
+        { label:'Positivi',  data:pts.map(p=>p.isPos?p.y:null), borderColor:'#34C759', backgroundColor:'#34C75920', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#34C759', fill:false, tension:0.1, spanGaps:true },
+        { label:'Neutri',    data:pts.map(p=>p.isNeu?p.y:null), borderColor:'#FFCC00', backgroundColor:'#FFCC0020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FFCC00', fill:false, tension:0.1, spanGaps:true },
+        { label:'Negativi',  data:pts.map(p=>p.isNeg?p.y:null), borderColor:'#FF3B30', backgroundColor:'#FF3B3020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FF3B30', fill:false, tension:0.1, spanGaps:true },
       ]
     : toxDatasets
 
@@ -1320,6 +1320,4 @@ const S = {
   grid:    { maxWidth:1400, margin:'0 auto', padding:'clamp(0.75rem,3vw,1.25rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
   kpiVal:  { fontSize:32, fontWeight:700, color:'#fff', lineHeight:1 },
   kpiLab:  { fontSize:11, color:'#8e8e93', marginTop:3 },
-  bottomNav:    { position:'fixed', bottom:0, left:0, right:0, zIndex:100, background:'rgba(20,20,22,0.98)', borderTop:'0.5px solid rgba(255,255,255,0.1)', display:'flex', paddingBottom:'max(env(safe-area-inset-bottom, 0px), 8px)' },
-  bottomNavItem:{ flex:1, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'8px 4px 6px' },
 }
