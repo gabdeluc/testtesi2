@@ -52,6 +52,9 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 # ENUMERAZIONI
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Soglia classificazione tossicità — coerente tra backend e frontend
+TOXICITY_THRESHOLD = 0.6
+
 class SentimentLabel(str, Enum):
     POSITIVE = "positive"
     NEUTRAL  = "neutral"
@@ -255,7 +258,7 @@ def _mock_toxicity(text: str) -> ToxicityResult:
     confidence = round(0.72 + rng.uniform(0, 0.23), 4)
     score      = round(min(score, 0.98), 4)
     return ToxicityResult(
-        is_toxic=is_toxic, toxicity_score=score, severity=severity,
+        is_toxic=(score > TOXICITY_THRESHOLD), toxicity_score=score, severity=severity,
         confidence=confidence, raw_output={"mock": True}, model_type="toxicity",
     )
 
@@ -322,7 +325,9 @@ class ToxicityDetector:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.post(f"{self.base_url}/analyze", json={"text": text})
                 r.raise_for_status()
-                return ToxicityResult(**r.json())
+                item = r.json()
+                item["is_toxic"] = item.get("toxicity_score", 0) > TOXICITY_THRESHOLD
+                return ToxicityResult(**item)
         except Exception:
             print(f"[toxicity] unreachable at {self.base_url} — mock ON")
             self._use_mock = True
@@ -337,7 +342,11 @@ class ToxicityDetector:
                 r.raise_for_status()
                 data = r.json()
                 # Trasforma la risposta del microservizio nel formato atteso
-                results = [ToxicityResult(**item) for item in data.get("results", [])]
+                raw_results = data.get("results", [])
+                # Soglia 0.6: il microservizio BERT calcola is_toxic internamente; qui la ricalcoliamo
+                for item in raw_results:
+                    item["is_toxic"] = item.get("toxicity_score", 0) > TOXICITY_THRESHOLD
+                results = [ToxicityResult(**item) for item in raw_results]
                 toxic_n = sum(1 for res in results if res.is_toxic)
                 avg_sc  = round(sum(res.toxicity_score for res in results) / len(results), 4) if results else 0.0
                 return BatchToxicityResult(

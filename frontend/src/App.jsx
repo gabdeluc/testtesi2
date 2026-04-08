@@ -12,10 +12,6 @@ ChartJS.register(
 
 const API_URL   = 'http://localhost:8000'
 const MOBILE_BP = 768
-
-// Simula il ritardo di elaborazione BERT per ogni messaggio (ms).
-// In un sistema reale questo sarebbe il tempo che il backend impiega
-// a ricevere l'audio, trascriverlo e analizzarlo con i modelli.
 const BERT_MIN_DELAY = 300
 const BERT_MAX_DELAY = 700
 
@@ -35,22 +31,9 @@ function useMediaQuery(query) {
 
 const PARTICIPANT_COLORS = ['#00C7BE', '#BF5AF2', '#FF9F0A', '#30D158', '#FF375F']
 const SPEEDS   = [1, 2, 5, 10, 20]
-// Framerate: ogni N secondi reali viene rilasciato il prossimo
-// blocco di messaggi (quelli avvenuti in quei N secondi di meeting).
-// Simula il ritardo di elaborazione BERT in produzione.
 const FRAMERATES = [
-  { label: 'Off',  value: 0  },
-  { label: '2s',   value: 2  },
-  { label: '5s',   value: 5  },
-  { label: '10s',  value: 10 },
-  { label: '30s',  value: 30 },
-]
-const NAV_ITEMS = [
-  { id: 'overview',     icon: '⊞', label: 'Overview' },
-  { id: 'sentiment',    icon: '◎', label: 'Sentiment' },
-  { id: 'toxicity',     icon: '⚠', label: 'Tossicità' },
-  { id: 'participants', icon: '👥', label: 'Partecipanti' },
-  { id: 'stream',       icon: '▤', label: 'Stream' },
+  { label: 'Off', value: 0 }, { label: '2s', value: 2 }, { label: '5s', value: 5 },
+  { label: '10s', value: 10 }, { label: '30s', value: 30 },
 ]
 
 const tsToSec    = ts => ts ? new Date(ts).getTime() / 1000 : 0
@@ -58,8 +41,7 @@ const secToLabel = sec => {
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60)
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
-const bertDelay = () =>
-  BERT_MIN_DELAY + Math.random() * (BERT_MAX_DELAY - BERT_MIN_DELAY)
+const bertDelay = () => BERT_MIN_DELAY + Math.random() * (BERT_MAX_DELAY - BERT_MIN_DELAY)
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 const Toast = ({ message, type, onClose }) => {
@@ -88,49 +70,20 @@ export default function App() {
   // ── Playback ──────────────────────────────────────────────────────────────
   const [playbackIndex, setPlaybackIndex] = useState(0)
   const [isPlaying,     setIsPlaying]     = useState(false)
-
-  /*
-   * mode: 'live' | 'review'
-   *
-   * LIVE — Simula l'ingresso a un meeting in corso.
-   *   • Il playback parte automaticamente.
-   *   • Ogni messaggio arriva con il gap reale dai timestamp + ritardo BERT
-   *     (BERT_MIN_DELAY–BERT_MAX_DELAY ms di elaborazione simulata).
-   *   • joinOffset: quanti messaggi erano già avvenuti quando sei entrato.
-   *     Se joinOffset > 0 quei messaggi non vengono mostrati in diretta
-   *     (eri assente), ma saranno disponibili in review.
-   *   • Nessun controllo velocità, nessun tasto pausa.
-   *   • bertProcessing: true mentre il modello "elabora" il prossimo messaggio.
-   *
-   * REVIEW — Attivata a meeting concluso premendo "Rivedi dall'inizio".
-   *   • Vedi tutto il transcript (inclusi i messaggi precedenti all'ingresso).
-   *   • Controlli Play/Pausa, ⏮ reset, selettore velocità 1×–20×.
-   *   • Export JSON/CSV disponibile.
-   */
-  const [mode,            setMode]           = useState('live')
-  const [joinOffset,      setJoinOffset]     = useState(0)
-  // Stato live proveniente dal backend (not_started | active | ended)
-  const [meetingStatus,   setMeetingStatus]  = useState('not_started')
-  const [liveSpeed,       setLiveSpeed]      = useState(1.0)
-  const [liveTotalSec,    setLiveTotalSec]   = useState(0)    // total_seconds dal backend
+  const [mode,             setMode]            = useState('live')
+  const [joinOffset,       setJoinOffset]      = useState(0)
+  const [meetingStatus,    setMeetingStatus]   = useState('not_started')
+  const [liveSpeed,        setLiveSpeed]       = useState(1.0)
+  const [liveTotalSec,     setLiveTotalSec]    = useState(0)
   const pollTimerRef = useRef(null)
-
-  // Framerate simulation: l'utente sceglie quanti secondi di meeting
-  // vengono "rilasciati" ogni secondo reale. Es: 10 = 10 secondi di meeting/sec.
-  // Il backend viene interrogato con ?simulatedOffset=N per ricevere solo
-  // i messaggi fino al secondo N del meeting. Simula il ritardo BERT reale.
-  const [frameRate,        setFrameRate]      = useState(0)   // 0 = off
-  const [simOffset,        setSimOffset]      = useState(0)
+  const [frameRate,         setFrameRate]      = useState(0)
+  const [simOffset,         setSimOffset]      = useState(0)
   const simOffsetRef = useRef(0)
   const frameTimerRef = useRef(null)
-  // Riferimento temporale per il timer live: { wallAtSync, realAtSync }
-  // wallSec viene calcolato come wallAtSync + (Date.now() - realAtSync) / 1000
-  // invece di incrementare wallRef ogni 100ms → nessun drift, nessun reset.
-  const liveTimerSync = useRef(null)  // { wallAtSync: number, realAtSync: number }
-  const liveClockRef  = useRef(null)  // interval del clock live
+  const liveTimerSync = useRef(null)
+  const liveClockRef  = useRef(null)
   const [bertProcessing,  setBertProcessing] = useState(false)
   const [speed, setSpeed] = useState(5)
-
   const timerRef = useRef(null)
   const indexRef = useRef(0)
   const [wallSec, setWallSec] = useState(0)
@@ -138,13 +91,12 @@ export default function App() {
   const clockRef = useRef(null)
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  const [activeView,       setActiveView]      = useState('overview')
-  const [meetingList,      setMeetingList]     = useState([])
-  const [selectedMeeting,  setSelectedMeeting] = useState('mtg001')
-  const [showWidgetPanel,  setShowWidgetPanel] = useState(false)
-  const [openSettings,     setOpenSettings]    = useState(null)
-  const [toasts,           setToasts]          = useState([])
-  const [showJoinBanner,   setShowJoinBanner]  = useState(false)
+  const [meetingList,       setMeetingList]     = useState([])
+  const [selectedMeeting,   setSelectedMeeting] = useState('mtg001')
+  const [showWidgetPanel,   setShowWidgetPanel] = useState(false)
+  const [openSettings,      setOpenSettings]    = useState(null)
+  const [toasts,            setToasts]          = useState([])
+  const [showJoinBanner,    setShowJoinBanner]  = useState(false)
 
   const [visibleWidgets, setVisibleWidgets] = useState({
     messages:true, sentimentKPI:true, toxicityKPI:true, healthScore:true,
@@ -167,7 +119,7 @@ export default function App() {
 
   const toastCounter = useRef(0)
   const showToast = useCallback((msg, type='info') => {
-    const id = ++toastCounter.current   // sempre unico, nessuna collisione
+    const id = ++toastCounter.current
     setToasts(p => [...p, { id, message: msg, type }])
   }, [])
 
@@ -178,12 +130,12 @@ export default function App() {
   const stopClock = useCallback(() => {
     if (clockRef.current) { clearInterval(clockRef.current); clockRef.current = null }
   }, [])
-
-  const stopFrameTimer = useCallback(() => {
-    if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null }
+  const stopLiveClock = useCallback(() => {
+    if (liveClockRef.current) { clearInterval(liveClockRef.current); liveClockRef.current = null }
   }, [])
-
-  // Clock live: non accumula ma calcola da riferimento assoluto → no drift/reset
+  const stopPollTimer = useCallback(() => {
+    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null }
+  }, [])
   const startLiveClock = useCallback(() => {
     if (liveClockRef.current) clearInterval(liveClockRef.current)
     liveClockRef.current = setInterval(() => {
@@ -195,22 +147,13 @@ export default function App() {
     }, 100)
   }, [])
 
-  const stopLiveClock = useCallback(() => {
-    if (liveClockRef.current) { clearInterval(liveClockRef.current); liveClockRef.current = null }
-  }, [])
-
-  const stopPollTimer = useCallback(() => {
-    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null }
-  }, [])
-
   const stopTimerRef = useRef(stopTimer)
   const stopClockRef  = useRef(stopClock)
-  const startClockRef = useRef(null)   // popolato dopo la dichiarazione di startClock
+  const startClockRef = useRef(null)
   useEffect(() => { stopTimerRef.current = stopTimer }, [stopTimer])
   useEffect(() => { stopClockRef.current = stopClock }, [stopClock])
 
-  // ── data loading ──────────────────────────────────────────────────────────
-  // ── pollBackend: chiede al backend i messaggi disponibili finora ─────────────
+  // ── pollBackend ───────────────────────────────────────────────────────────
   const pollBackend = useCallback(async (meetingId) => {
     try {
       const [rStatus, rData] = await Promise.all([
@@ -220,42 +163,28 @@ export default function App() {
       if (!rStatus.ok || !rData.ok) return
       const [dStatus, dData] = await Promise.all([rStatus.json(), rData.json()])
 
-      // Aggiorna stato meeting dal backend
       setMeetingStatus(dStatus.status)
       if (dStatus.total_seconds > 0) setLiveTotalSec(dStatus.total_seconds)
 
-      // Aggiorna transcript con i messaggi disponibili finora
       const newTranscript = dData.transcript || []
       setAllTranscript(prev => {
-        if (newTranscript.length > prev.length) {
-          return newTranscript
-        }
+        if (newTranscript.length > prev.length) return newTranscript
         return prev
       })
 
-      // Sincronizza il riferimento temporale con il backend.
-      // Il clock locale calcola wallSec = wallAtSync + (now - realAtSync) / 1000.
       if (dStatus.elapsed_seconds >= 0 && dStatus.status !== 'ended') {
-        liveTimerSync.current = {
-          wallAtSync: dStatus.elapsed_seconds,
-          realAtSync: Date.now(),
-        }
+        liveTimerSync.current = { wallAtSync: dStatus.elapsed_seconds, realAtSync: Date.now() }
       }
 
-      // Meeting concluso → ferma tutto e snap timer al valore esatto
       if (dStatus.status === 'ended') {
-        stopPollTimer()
-        stopLiveClock()
-        setBertProcessing(false)
-        setIsPlaying(false)
+        stopPollTimer(); stopLiveClock()
+        setBertProcessing(false); setIsPlaying(false)
         liveTimerSync.current = null
-        // Snap wallSec al valore esatto di fine meeting
         const totalSec = dStatus.total_seconds || 0
-        wallRef.current = totalSec
-        setWallSec(totalSec)
+        wallRef.current = totalSec; setWallSec(totalSec)
       }
-    } catch { /* silenzioso — il backend potrebbe essere momentaneamente non disponibile */ }
-  }, [showToast, stopPollTimer])
+    } catch { /* silenzioso */ }
+  }, [stopPollTimer, stopLiveClock])
 
   const loadMeeting = useCallback(async (meetingId) => {
     setLoading(true); setError(null)
@@ -267,52 +196,24 @@ export default function App() {
     setShowJoinBanner(false); setAllTranscript([])
 
     try {
-      // 1. Carica partecipanti
       const rP = await fetch(`${API_URL}/participants`)
       if (!rP.ok) throw new Error('participants error')
       const dP = await rP.json()
       setParticipants(dP.participants)
 
-      // 2. Avvia il meeting sul backend (con join offset casuale per simulare ingresso in corso)
-      //    Il backend calcola quanto tempo è passato e rilascia solo i messaggi avvenuti finora
-      const joinPct  = 0.2 + Math.random() * 0.4   // entriamo tra 20% e 60% del meeting
-      //    Usiamo speed per comprimere o espandere il tempo: 1x = reale
-      //    Il "join" viene simulato avviando il meeting con un offset temporale negativo.
-      //    Poiché /start imposta started_at=now, aspettiamo e facciamo un primo poll.
+      const joinPct  = 0.2 + Math.random() * 0.4
       const startRes = await fetch(`${API_URL}/meeting/${meetingId}/start?speed=${liveSpeed}`, { method: 'POST' })
       if (!startRes.ok) throw new Error('start error')
       const startData = await startRes.json()
-
-      // 3. Simula "ingresso in corso" avanzando artificialmente il clock del backend:
-      //    riavvia il meeting con started_at retrodatato di joinPct * durata totale
-      //    Nota: il backend usa started_at=now(), quindi per simulare join in corso
-      //    aggiorniamo la sessione con un offset (chiamiamo /start con started_at overriden)
-      //    Per semplicità: il primo poll avviene subito, mostrando i messaggi disponibili
       const totalSec  = startData.total_seconds
       const joinSec   = Math.floor(totalSec * joinPct)
+      await fetch(`${API_URL}/meeting/${meetingId}/start?speed=${liveSpeed}&join_offset=${joinSec}`, { method: 'POST' })
 
-      // Sovrascriviamo started_at retrodatando di joinSec secondi
-      // Il backend interpreta speed=liveSpeed, quindi started_at - joinSec/speed
-      // Usiamo un trick: riavviamo con offset passato come query param
-      await fetch(
-        `${API_URL}/meeting/${meetingId}/start?speed=${liveSpeed}&join_offset=${joinSec}`,
-        { method: 'POST' }
-      )
-
-      // 4. Inizializza il riferimento temporale a 0 prima della prima poll
-      //    così il clock parte subito senza aspettare la risposta del backend
       liveTimerSync.current = { wallAtSync: 0, realAtSync: Date.now() }
-
-      // 4b. Prima poll immediata (aggiorna liveTimerSync col valore reale del backend)
       await pollBackend(meetingId)
-      setMeetingStatus('active')
-      setIsPlaying(true)
-
-      // Mostra banner ingresso in corso
+      setMeetingStatus('active'); setIsPlaying(true)
       setShowJoinBanner(true)
       setTimeout(() => setShowJoinBanner(false), 5000)
-
-      // silent: meeting avviato
     } catch {
       setError('Impossibile caricare il meeting')
       showToast('Errore caricamento', 'error')
@@ -324,28 +225,17 @@ export default function App() {
   useEffect(() => {
     fetch(`${API_URL}/meetings`).then(r=>r.json()).then(d=>setMeetingList(d.meetings||[])).catch(()=>{})
   }, [])
-
   useEffect(() => { loadMeeting(selectedMeeting) }, [selectedMeeting, loadMeeting])
 
-  // ── Polling backend in live mode ─────────────────────────────────────────
-  // Il framerate determina ogni quanti secondi chiediamo aggiornamenti al backend.
-  // Con Off (0) → polling ogni 3 secondi di default in live mode.
-  // Con 5s → ogni 5 secondi.
-  // Avvia clock locale e polling quando il meeting è active
   useEffect(() => {
     if (mode !== 'live' || meetingStatus === 'ended' || meetingStatus === 'not_started') {
       stopPollTimer()
-      if (meetingStatus === 'ended') {
-        setBertProcessing(false)
-        stopLiveClock()
-      }
+      if (meetingStatus === 'ended') { setBertProcessing(false); stopLiveClock() }
       return
     }
-    // Inizializza il riferimento se non esiste ancora
     if (!liveTimerSync.current) {
       liveTimerSync.current = { wallAtSync: wallRef.current, realAtSync: Date.now() }
     }
-    // Avvia il clock live (reference-based, no drift)
     startLiveClock()
     const interval = frameRate > 0 ? frameRate * 1000 : 3000
     stopPollTimer()
@@ -353,48 +243,23 @@ export default function App() {
     return () => { stopPollTimer(); stopLiveClock() }
   }, [mode, meetingStatus, frameRate, selectedMeeting, pollBackend, stopPollTimer, startLiveClock, stopLiveClock])
 
-  // refresh rate rimosso: i dati mock non cambiano tra una fetch e l'altra
-
-
-
-  // Framerate: controlla l'intervallo di polling al backend in live mode.
-  // Il vecchio sistema client-side (simOffsetRef + findIndex) è sostituito
-  // dal polling che usa il backend come fonte di verità.
-  // frameRate=0 → poll ogni 3s (default), frameRate=N → poll ogni N secondi.
-
   // ── playback engine ───────────────────────────────────────────────────────
   const scheduleNext = useCallback((idx, transcript, spd, isLive) => {
     if (idx >= transcript.length) {
       setBertProcessing(false)
-      // Snappa il wallClock all'ultimo timestamp esatto prima di fermare tutto
       if (transcript.length > 0) {
-        const exact = tsToSec(transcript[transcript.length - 1].created_at)
-                    - tsToSec(transcript[0].created_at)
-        wallRef.current = exact
-        setWallSec(exact)
+        const exact = tsToSec(transcript[transcript.length - 1].created_at) - tsToSec(transcript[0].created_at)
+        wallRef.current = exact; setWallSec(exact)
       }
-      // stopClock tramite isPlaying → useEffect
-      setIsPlaying(false)
-      return
+      setIsPlaying(false); return
     }
-
-    // Gap naturale tra messaggi (dai timestamp reali)
     const gap = transcript[idx + 1]
-      ? tsToSec(transcript[idx + 1].created_at) - tsToSec(transcript[idx].created_at)
-      : 1
-
+      ? tsToSec(transcript[idx + 1].created_at) - tsToSec(transcript[idx].created_at) : 1
     const naturalDelay = Math.max(80, (gap * 1000) / spd)
-
-    // In live mode aggiungiamo il ritardo di elaborazione BERT
     const delay = isLive ? naturalDelay + bertDelay() : naturalDelay
-
-    // (indicatore BERT rimosso — non usato in live mode backend-driven)
-
     timerRef.current = setTimeout(() => {
       setBertProcessing(false)
-      const next = idx + 1
-      indexRef.current = next
-      setPlaybackIndex(next)
+      const next = idx + 1; indexRef.current = next; setPlaybackIndex(next)
       if (transcript[next-1])
         wallRef.current = tsToSec(transcript[next-1].created_at) - tsToSec(transcript[0].created_at)
       scheduleNext(next, transcript, spd, isLive)
@@ -403,60 +268,37 @@ export default function App() {
 
   const startClock = useCallback((spd) => {
     stopClock()
-    clockRef.current = setInterval(() => {
-      wallRef.current += 0.1 * spd
-      setWallSec(wallRef.current)
-    }, 100)
+    clockRef.current = setInterval(() => { wallRef.current += 0.1 * spd; setWallSec(wallRef.current) }, 100)
   }, [stopClock])
-  // Aggiorna il ref ora che startClock è dichiarato
   useEffect(() => { startClockRef.current = startClock }, [startClock])
 
-
-
-  // Ferma il clock quando la pagina va in background (risparmio batteria mobile)
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.hidden) {
-        stopClock()
-      } else if (isPlaying) {
-        startClock(mode === 'live' ? (frameRate > 0 ? 1 : 1) : speed)
-      }
+      if (document.hidden) { stopClock() }
+      else if (isPlaying) { startClock(mode === 'live' ? 1 : speed) }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [isPlaying, mode, speed, frameRate, stopClock, startClock])
+  }, [isPlaying, mode, speed, stopClock, startClock])
 
   useEffect(() => {
     if (isPlaying && allTranscript.length > 0) {
       if (indexRef.current >= allTranscript.length) {
-        // In review: resetta dall'inizio assoluto
         indexRef.current = mode === 'review' ? 0 : joinOffset
         wallRef.current  = mode === 'review' ? 0 : (
           allTranscript[joinOffset] ? tsToSec(allTranscript[joinOffset].created_at) - tsToSec(allTranscript[0].created_at) : 0
         )
-        setPlaybackIndex(indexRef.current)
-        setWallSec(wallRef.current)
+        setPlaybackIndex(indexRef.current); setWallSec(wallRef.current)
       }
-      const isLive = mode === 'live'
-      if (isLive) {
-        // In live mode il timer è gestito dal clock live (liveClockRef).
-        // scheduleNext e startClock NON vengono chiamati — il backend è la fonte.
-        return
-      }
-      // Review mode: playback client-side
+      if (mode === 'live') return
       scheduleNext(indexRef.current, allTranscript, speed, false)
       startClock(speed)
-    } else {
-      stopTimer(); stopClock(); setBertProcessing(false)
-    }
+    } else { stopTimer(); stopClock(); setBertProcessing(false) }
     return () => { stopTimer(); stopClock(); setBertProcessing(false) }
   }, [isPlaying, allTranscript, speed, mode, joinOffset, scheduleNext, startClock, stopTimer, stopClock])
 
   // ── handlers ─────────────────────────────────────────────────────────────
-  // Pausa/play solo in review
   const handlePlayPause = () => { if (mode === 'review') setIsPlaying(p => !p) }
-
-  // Entra in review: resetta al messaggio 0, dà controllo all'utente
   const enterReviewMode = () => {
     stopTimer(); stopClock(); stopPollTimer(); setIsPlaying(false)
     setBertProcessing(false)
@@ -464,80 +306,46 @@ export default function App() {
     setPlaybackIndex(0); setWallSec(0)
     setMode('review'); setSpeed(5)
   }
-
   const handleReset = () => {
     if (mode !== 'review') return
     stopTimer(); stopClock(); setIsPlaying(false)
     indexRef.current = 0; wallRef.current = 0
     setPlaybackIndex(0); setWallSec(0)
   }
-
   const handleSpeedChange = s => {
     if (mode !== 'review') return
     setSpeed(s)
     if (isPlaying) { stopTimer(); stopClock(); setIsPlaying(false); setTimeout(() => setIsPlaying(true), 30) }
   }
 
-  // ── export (solo a meeting finito) ────────────────────────────────────────
+  // ── export ────────────────────────────────────────────────────────────────
   const exportJSON = () => {
-    const exportData = mode === 'review' ? allTranscript : allTranscript
-    const data = { meeting_id:selectedMeeting, exported_at:new Date().toISOString(), mode, join_offset:joinOffset, transcript:exportData, stats:calcStats(exportData) }
+    const data = { meeting_id:selectedMeeting, exported_at:new Date().toISOString(), mode, transcript:allTranscript, stats:calcStats(allTranscript) }
     const blob  = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' })
-    const a     = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob),
-      download:`${selectedMeeting}_${new Date().toISOString().split('T')[0]}.json`
-    })
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download:`${selectedMeeting}_${new Date().toISOString().split('T')[0]}.json` })
     a.click(); URL.revokeObjectURL(a.href)
-    // silent
   }
-
   const exportCSV = () => {
-    const exportData = allTranscript
-    const rows = exportData.map(m =>
-      `${m.conversation_turn},"${m.participant_name}","${m.transcribed_text.replace(/"/g,'""')}",${m.sentiment.label},${Math.round(m.sentiment.score*100)}%,${m.toxicity.is_toxic},${m.toxicity.severity},${m.created_at}`
-    )
-    const blob = new Blob(
-      [['Turno,Partecipante,Testo,Sentiment,Score,Tossico,Severità,Timestamp', ...rows].join('\n')],
-      { type:'text/csv;charset=utf-8;' }
-    )
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob),
-      download:`${selectedMeeting}_${new Date().toISOString().split('T')[0]}.csv`
-    })
+    const headers = ['timestamp','participant','text','sentiment_label','sentiment_score','toxicity_score','is_toxic']
+    const rows = allTranscript.map(e => [
+      e.created_at, e.participant_name, `"${e.transcribed_text.replace(/"/g,'""')}"`,
+      e.sentiment.label, e.sentiment.score, e.toxicity.toxicity_score, e.toxicity.is_toxic
+    ])
+    const blob = new Blob([[headers.join(','), ...rows.map(r=>r.join(','))].join('\n')], { type:'text/csv;charset=utf-8;' })
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download:`${selectedMeeting}_${new Date().toISOString().split('T')[0]}.csv` })
     a.click(); URL.revokeObjectURL(a.href)
-    // silent
   }
 
   // ── computed ──────────────────────────────────────────────────────────────
-  /*
-   * liveTranscript: messaggi che l'utente vede nei widget.
-   * - In LIVE: solo i messaggi da joinOffset in poi (quelli durante la tua presenza)
-   * - In REVIEW: tutto, dall'inizio assoluto
-   */
-  // In LIVE mode il transcript viene gestito dal backend (polling).
-  // allTranscript contiene già solo i messaggi disponibili finora.
-  // In REVIEW mode il playback è client-side: slice(0, playbackIndex).
-  const liveTranscript = mode === 'live'
-    ? allTranscript  // backend è la fonte di verità — mostra tutto ciò che ha rilasciato
-    : allTranscript.slice(0, playbackIndex)
-
+  const liveTranscript = mode === 'live' ? allTranscript : allTranscript.slice(0, playbackIndex)
   const total      = allTranscript.length
   const baseTs     = total > 0 ? tsToSec(allTranscript[0].created_at) : 0
   const _totalSecFromTs = total > 0 ? tsToSec(allTranscript[total-1].created_at) - baseTs : 0
-  // In live mode usa il valore dal backend (include tutti i messaggi, non solo quelli arrivati)
   const totalSec   = mode === 'live' && liveTotalSec > 0 ? liveTotalSec : _totalSecFromTs
-
-  // Progress bar: in live parte dal punto di ingresso
-  const liveStartTs = joinOffset > 0 && allTranscript[joinOffset]
-    ? tsToSec(allTranscript[joinOffset].created_at) - baseTs
-    : 0
-  const progressPct  = mode === 'review'
+  const progressPct = mode === 'review'
     ? (totalSec > 0 ? Math.min((wallSec / totalSec) * 100, 100) : 0)
     : (total > 0 ? Math.min((allTranscript.length / total) * 100, 100) : 0)
-
-  const isFinished = mode === 'live'
-    ? meetingStatus === 'ended'
-    : playbackIndex >= total && total > 0
+  const isFinished = mode === 'live' ? meetingStatus === 'ended' : playbackIndex >= total && total > 0
   const liveEnded  = meetingStatus === 'ended' && mode === 'live'
 
   // ── helpers ───────────────────────────────────────────────────────────────
@@ -572,41 +380,30 @@ export default function App() {
   }
   const F    = id  => getFiltered(id)
   const S_id = id  => calcStats(F(id))
-
   const getParticipantStats = () => memoParticipantStats
-
-  // Sentiment Polarity Index: metrica standard in letteratura sentiment analysis.
-  // Range [-1, +1]: -1 = tutto negativo, 0 = bilanciato, +1 = tutto positivo.
-  // Formula: (positivi - negativi) / totale
   const calcPolarity = stats => {
     if (stats.total_messages === 0) return null
     const { positive, negative } = stats.sentiment.distribution
     return ((positive - negative) / stats.total_messages)
   }
-
-  // ── statistiche memoizzate — ricalcolate solo quando liveTranscript cambia ──
-  const memoStats = useMemo(() => calcStats(liveTranscript), [liveTranscript])
   const memoParticipantStats = useMemo(
-    () => participants.map(p => ({
-      ...p,
-      stats: calcStats(liveTranscript.filter(e => e.participant_name === p.name))
-    })),
+    () => participants.map(p => ({ ...p, stats: calcStats(liveTranscript.filter(e => e.participant_name === p.name)) })),
     [liveTranscript, participants]
   )
 
   // ── widget sections ───────────────────────────────────────────────────────
   const SECTIONS = [
     { title:'KPI', items:[
-      { id:'messages',    name:'Messaggi',      desc:'Contatore messaggi ricevuti.' },
-      { id:'sentimentKPI',name:'Sentiment %',   desc:'Distribuzione positivo/neutro/negativo.' },
-      { id:'toxicityKPI', name:'Tossicità',     desc:'Conteggio e % messaggi tossici.' },
-      { id:'healthScore', name:'Sentiment Polarity', desc:'Indice [-1,+1]: (positivi-negativi)/totale. 0=bilanciato.' },
+      { id:'messages',    name:'Messaggi',           desc:'Contatore messaggi ricevuti.' },
+      { id:'sentimentKPI',name:'Sentiment %',        desc:'Distribuzione positivo/neutro/negativo.' },
+      { id:'toxicityKPI', name:'Tossicità',          desc:'Conteggio e % messaggi tossici (soglia 60%).' },
+      { id:'healthScore', name:'Sentiment Polarity', desc:'Indice [-1,+1]: (positivi-negativi)/totale.' },
     ]},
     { title:'Grafici', items:[
       { id:'sentimentDist',     name:'Distribuzione Sentiment', desc:'Barra pos/neu/neg in percentuale.' },
-      { id:'timelineSentiment', name:'Timeline Sentiment',      desc:'Score per ogni messaggio nel tempo.' },
-      { id:'timelineToxicity',  name:'Timeline Tossicità',      desc:'Score tossicità per ogni messaggio.' },
-      { id:'toxicityGauge',     name:'Gauge Tossicità',         desc:'Media tossicità su gauge.' },
+      { id:'timelineSentiment', name:'Timeline Sentiment',      desc:'Score nlptown per ogni messaggio nel tempo.' },
+      { id:'timelineToxicity',  name:'Timeline Tossicità',      desc:'Probabilità di tossicità per partecipante.' },
+      { id:'toxicityGauge',     name:'Gauge Tossicità',         desc:'% messaggi sopra soglia 60%.' },
     ]},
     { title:'Altro', items:[
       { id:'participantRoster', name:'Partecipanti',    desc:'Distribuzione sentiment per partecipante.' },
@@ -625,13 +422,14 @@ export default function App() {
       </Wgt>
     ) : null
 
+  // Tutti i widget visibili nella dashboard unica (nessuna navigazione per vista)
   const buildWidgets = () => {
     const polarity = calcPolarity(S_id('healthScore'))
-    const wMessages   = wgt('messages','Messaggi',false,
+    const wMessages = wgt('messages','Messaggi',false,
       <><div style={S.kpiVal}>{F('messages').length}</div><div style={S.kpiLab}>messaggi ricevuti</div></>)
-    const wSentKPI    = wgt('sentimentKPI','Sentiment',false,   <SentimentKPI stats={S_id('sentimentKPI')} />)
-    const wToxKPI     = wgt('toxicityKPI', 'Tossicità', false,  <ToxicityKPI  stats={S_id('toxicityKPI')} />)
-    const wHealth     = wgt('healthScore','Sentiment Polarity Index',false,(() => {
+    const wSentKPI  = wgt('sentimentKPI','Sentiment',false,    <SentimentKPI stats={S_id('sentimentKPI')} />)
+    const wToxKPI   = wgt('toxicityKPI','Tossicità',false,     <ToxicityKPI  stats={S_id('toxicityKPI')} />)
+    const wHealth   = wgt('healthScore','Sentiment Polarity Index',false,(() => {
       if (polarity === null) return <Empty />
       const color = polarity>=0.3?'#34C759':polarity<=-0.3?'#FF3B30':'#FF9500'
       return (
@@ -646,41 +444,32 @@ export default function App() {
         </>
       )
     })())
-    const wSentDist   = wgt('sentimentDist','Distribuzione Sentiment',true,  <SentimentDistChart stats={S_id('sentimentDist')} />)
-    const wTimeSent   = wgt('timelineSentiment','Timeline Sentiment — tocca un punto per vedere il messaggio',true,
-      <TimelineChart messages={F('timelineSentiment')} metric="sentiment" color="#00C7BE" yLabel="Score sentiment nlptown [0–100%]" />)
-    const wTimeTox    = wgt('timelineToxicity','Timeline Tossicità — curva per partecipante',true,
+    const wSentDist = wgt('sentimentDist','Distribuzione Sentiment',true, <SentimentDistChart stats={S_id('sentimentDist')} />)
+    const wTimeSent = wgt('timelineSentiment','Timeline Sentiment — tocca un punto per vedere il messaggio',true,
+      <TimelineChart messages={F('timelineSentiment')} metric="sentiment" yLabel="Score sentiment nlptown [0–100%]" />)
+    const wTimeTox  = wgt('timelineToxicity','Timeline Tossicità — curva per partecipante',true,
       <TimelineChart messages={liveTranscript} metric="toxicity" yLabel="Probabilità di tossicità gravitee-io [0–100%]"
         participants={participants} participantColors={PARTICIPANT_COLORS} />)
-    const wGauge      = wgt('toxicityGauge','Messaggi Tossici (%)',!isMobile,
+    const wGauge    = wgt('toxicityGauge','Messaggi Tossici (%)',!isMobile,
       <ToxicityGauge score={S_id('toxicityGauge').toxicity.toxic_ratio} />)
-    const wRoster     = wgt('participantRoster','Partecipanti',true,
+    const wRoster   = wgt('participantRoster','Partecipanti',true,
       <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
-    const wStream     = wgt('messageStream','Stream Messaggi',true,
+    const wStream   = wgt('messageStream','Stream Messaggi',true,
       <MessageStream messages={F('messageStream')} limit={widgetConfigs.messageStream?.limit||30}
         participantColors={PARTICIPANT_COLORS} participants={participants} />)
-
-    const views = {
-      overview:     [wMessages, wHealth, wSentKPI, wToxKPI, wSentDist, wTimeSent, wTimeTox, wStream, wRoster],
-      sentiment:    [wSentKPI, wSentDist, wTimeSent],
-      toxicity:     [wToxKPI, wTimeTox, wGauge],
-      participants: [wRoster],
-      stream:       [wMessages, wStream],
-    }
-    return (views[activeView] || views.overview).filter(Boolean)
+    return [wMessages, wHealth, wSentKPI, wToxKPI, wSentDist, wTimeSent, wTimeTox, wGauge, wStream, wRoster].filter(Boolean)
   }
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div style={S.app}>
       {/* Toasts */}
-      {/* toast rimossi — non servono su mobile */}
+      <div style={{ position:'fixed', top:isMobile?10:20, right:isMobile?10:20, zIndex:1000, display:'flex', flexDirection:'column', alignItems:'flex-end' }}>
+        {toasts.map(t => <Toast key={t.id} {...t} onClose={() => setToasts(p => p.filter(x => x.id !== t.id))} />)}
+      </div>
 
       <div style={{ display:'flex', minHeight:'100vh' }}>
-
-
-        {/* ── Main content ──────────────────────────────────────────────── */}
-        <div style={{ flex:1, minWidth:0, paddingBottom: isMobile ? 72 : 0 }}>
+        <div style={{ flex:1, minWidth:0, paddingBottom:0 }}>
 
           {/* ── Header ─────────────────────────────────────────────────── */}
           <div style={S.header}>
@@ -704,52 +493,31 @@ export default function App() {
               </div>
 
               <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-
-                {/* ── LIVE ────────────────────────────────────────────── */}
                 {mode === 'live' && !liveEnded && (
                   <>
                     <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
-                      background:'rgba(255,59,48,0.15)', border:'0.5px solid rgba(255,59,48,0.4)',
-                      borderRadius:8 }}>
-                      <span style={{ width:8, height:8, borderRadius:'50%', background:'#FF3B30',
-                        animation:'pulse 1.5s ease-in-out infinite', flexShrink:0 }} />
-                      <span style={{ fontSize:13, fontWeight:700, color:'#FF3B30' }}>IN DIRETTA</span>
+                      background:'rgba(255,59,48,0.15)', border:'0.5px solid rgba(255,59,48,0.4)', borderRadius:8 }}>
+                      <span style={{ width:8, height:8, borderRadius:'50%', background:'#FF3B30', animation:'pulse 1.5s ease-in-out infinite', flexShrink:0 }} />
+                      <span style={{ fontSize:12, fontWeight:700, color:'#FF3B30', textTransform:'uppercase', letterSpacing:'0.5px' }}>Live</span>
                     </div>
-
-                    <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff' }}>
-                      {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
+                    <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.05)', borderRadius:8, padding:'4px 10px' }}>
+                      <span style={{ fontSize:11, color:'#8e8e93', fontWeight:600 }}>POLL</span>
+                      <select value={frameRate} onChange={e => setFrameRate(Number(e.target.value))}
+                        style={{ background:'none', border:'none', color:'#fff', fontSize:12, fontWeight:700, outline:'none', cursor:'pointer' }}>
+                        {FRAMERATES.map(f => <option key={f.value} value={f.value} style={{ background:'#1c1c1e' }}>{f.label}</option>)}
+                      </select>
+                    </div>
+                    <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff', marginLeft:4 }}>
+                      {secToLabel(wallSec)}
                     </span>
-
-                    {/* Selettore framerate: 0=real-time, N=N× accelerato */}
-                    <select value={frameRate}
-                      onChange={e => setFrameRate(Number(e.target.value))}
-                      style={S.select}
-                      title="Velocità di avanzamento del meeting (0=tempo reale)">
-                      {FRAMERATES.map(o => <option key={o.value} value={o.value}>⚡ {o.label}</option>)}
-                    </select>
-
                   </>
                 )}
-
-                {/* Badge CONCLUSO — sostituisce IN DIRETTA a fine live */}
-                {liveEnded && (
-                  <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
-                    background:'rgba(52,199,89,0.15)', border:'0.5px solid rgba(52,199,89,0.4)',
-                    borderRadius:8 }}>
-                    <span style={{ fontSize:13, fontWeight:700, color:'#34C759' }}>✓ CONCLUSO</span>
-                  </div>
-                )}
-
-                {/* ── REVIEW ──────────────────────────────────────────── */}
                 {mode === 'review' && (
                   <>
-                    <button onClick={handleReset} style={S.btn} title="Torna all'inizio">⏮</button>
-                    <button onClick={handlePlayPause}
-                      style={{ ...S.btn, background: isPlaying ? '#FF9500' : '#007AFF', minWidth:86 }}>
-                      {isPlaying ? '⏸ Pausa' : isFinished ? '↺ Riparti' : '▶ Play'}
+                    <button onClick={handlePlayPause} style={{ ...S.btn, background: isPlaying ? '#FF9500' : '#34C759', width:40, padding:0, fontSize:16 }}>
+                      {isPlaying ? '⏸' : '▶'}
                     </button>
-
-                    {/* Selettore velocità — solo in review */}
+                    <button onClick={handleReset} style={{ ...S.btn, width:40, padding:0, fontSize:16 }}>⏮</button>
                     <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.07)', borderRadius:8, padding:3 }}>
                       {SPEEDS.map(s => (
                         <button key={s} onClick={() => handleSpeedChange(s)}
@@ -760,13 +528,11 @@ export default function App() {
                         </button>
                       ))}
                     </div>
-
                     <span style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums', color:'#fff' }}>
                       {secToLabel(Math.min(wallSec, totalSec))} / {secToLabel(totalSec)}
                     </span>
                   </>
                 )}
-
                 <button onClick={() => setShowWidgetPanel(v => !v)} style={S.btn}>⚙️</button>
               </div>
             </div>
@@ -785,7 +551,6 @@ export default function App() {
                   : `${playbackIndex} / ${total} messaggi`}
               </span>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-
                 <span style={{ color: isPlaying ? '#007AFF' : isFinished ? '#34C759' : '#636366' }}>
                   {mode==='live'  && isPlaying   && '● In diretta'}
                   {mode==='live'  && liveEnded   && '✓ Meeting concluso'}
@@ -796,20 +561,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* Meeting concluso in live → offri revisione + export */}
             {liveEnded && (
-              <div style={{ maxWidth:1400, margin:'0 auto', padding:'8px 16px 12px',
-                display:'flex', gap:10, alignItems:'center', flexWrap:'wrap',
-                borderTop:'0.5px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ maxWidth:1400, margin:'0 auto', padding:'8px 16px 12px', display:'flex', gap:10, alignItems:'center', flexWrap:'wrap', borderTop:'0.5px solid rgba(255,255,255,0.08)' }}>
                 <span style={{ fontSize:13, fontWeight:600, color:'#fff' }}>Meeting concluso.</span>
-                <button onClick={enterReviewMode} style={{ ...S.btn, background:'#007AFF' }}>
-                  ↩ Rivedi dall'inizio
-                </button>
+                <button onClick={enterReviewMode} style={{ ...S.btn, background:'#007AFF' }}>↩ Rivedi dall'inizio</button>
                 <button onClick={exportJSON} style={{ ...S.btn, background:'#5856D6' }}>📥 JSON</button>
                 <button onClick={exportCSV}  style={{ ...S.btn, background:'#5856D6' }}>📊 CSV</button>
               </div>
             )}
-            {/* In revisione finita → solo export */}
             {mode==='review' && isFinished && (
               <div style={{ maxWidth:1400, margin:'0 auto', padding:'8px 16px 12px', display:'flex', gap:8, alignItems:'center' }}>
                 <span style={{ fontSize:12, color:'#8e8e93' }}>Scarica i dati:</span>
@@ -819,30 +578,19 @@ export default function App() {
             )}
           </div>
 
-          {/* Banner ingresso a meeting in corso — si mostra 5s poi scompare */}
           {showJoinBanner && joinOffset > 0 && (
-            <div style={{ margin:'12px 16px', padding:'10px 14px',
-              background:'rgba(0,122,255,0.1)', border:'0.5px solid rgba(0,122,255,0.3)',
-              borderRadius:10, fontSize:13, color:'#007AFF',
-              display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span>
-                ℹ️ Sei entrato con il meeting in corso al messaggio <strong>{joinOffset+1}/{total}</strong>.
-                I messaggi precedenti sono già visibili nei widget.
-              </span>
-              <button onClick={() => setShowJoinBanner(false)}
-                style={{ background:'none', border:'none', color:'#007AFF', cursor:'pointer', fontSize:16, padding:'0 4px' }}>✕</button>
+            <div style={{ margin:'12px 16px', padding:'10px 14px', background:'rgba(0,122,255,0.1)', border:'0.5px solid rgba(0,122,255,0.3)', borderRadius:10, fontSize:13, color:'#007AFF', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span>ℹ️ Sei entrato con il meeting in corso al messaggio <strong>{joinOffset+1}/{total}</strong>.</span>
+              <button onClick={() => setShowJoinBanner(false)} style={{ background:'none', border:'none', color:'#007AFF', cursor:'pointer', fontSize:16, padding:'0 4px' }}>✕</button>
             </div>
           )}
 
-          {/* Error */}
           {error && (
-            <div style={{ margin:16, padding:'12px 16px', background:'rgba(255,59,48,0.15)',
-              border:'0.5px solid rgba(255,59,48,0.3)', borderRadius:10, color:'#FF3B30', fontSize:14 }}>
+            <div style={{ margin:16, padding:'12px 16px', background:'rgba(255,59,48,0.15)', border:'0.5px solid rgba(255,59,48,0.3)', borderRadius:10, color:'#FF3B30', fontSize:14 }}>
               ⚠ {error}
             </div>
           )}
 
-          {/* Loading */}
           {loading && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:16 }}>
               <div style={{ width:32, height:32, border:'3px solid rgba(255,255,255,0.1)', borderTop:'3px solid #007AFF', borderRadius:'50%', animation:'spin 1s linear infinite' }} />
@@ -850,7 +598,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Review empty state (reset premuto) */}
           {!loading && mode==='review' && playbackIndex===0 && !isPlaying && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'60vh', gap:16, padding:24 }}>
               <div style={{ fontSize:48, color:'#3a3a3c' }}>↩</div>
@@ -859,43 +606,19 @@ export default function App() {
                 {total} messaggi totali · {secToLabel(totalSec)} durata<br/>
                 Premi <strong>Play</strong> e scegli la velocità
               </div>
-              <button onClick={handlePlayPause}
-                style={{ ...S.btn, background:'#007AFF', padding:'14px 36px', fontSize:16, fontWeight:700, borderRadius:14 }}>
+              <button onClick={handlePlayPause} style={{ ...S.btn, background:'#007AFF', padding:'14px 36px', fontSize:16, fontWeight:700, borderRadius:14 }}>
                 ▶ Inizia Revisione
               </button>
             </div>
           )}
 
-          {/* Widget grid */}
           {!loading && liveTranscript.length > 0 && (
             <div style={{ ...S.grid, gridTemplateColumns: isSmall ? '1fr' : isMobile ? 'repeat(2, minmax(140px, 1fr))' : 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-              {activeView !== 'overview' && (
-                <div style={{ gridColumn:'1/-1', fontSize:18, fontWeight:700, color:'#fff', padding:'4px 0 8px', display:'flex', alignItems:'center', gap:8 }}>
-                  {NAV_ITEMS.find(n => n.id===activeView)?.icon}{' '}
-                  {NAV_ITEMS.find(n => n.id===activeView)?.label}
-                </div>
-              )}
               {buildWidgets()}
             </div>
           )}
         </div>
       </div>
-
-      {/* ── Bottom Nav mobile ─────────────────────────────────────────────── */}
-      {isMobile && (
-        <nav style={S.bottomNav}>
-          {NAV_ITEMS.map(item => {
-            const active = activeView === item.id
-            return (
-              <button key={item.id} onClick={() => setActiveView(item.id)}
-                style={{ ...S.bottomNavItem, color: active ? '#007AFF' : '#8e8e93', fontWeight: active ? 700 : 400 }}>
-                <span style={{ fontSize:22 }}>{item.icon}</span>
-                <span style={{ fontSize:10 }}>{item.label}</span>
-              </button>
-            )
-          })}
-        </nav>
-      )}
 
       {/* ── Customize Panel ───────────────────────────────────────────────── */}
       {showWidgetPanel && (
@@ -921,7 +644,7 @@ export default function App() {
                         <button
                           style={{ border:'none', borderRadius:7, padding:'5px 12px', cursor:'pointer', fontSize:12, fontWeight:600, flexShrink:0,
                             background: visibleWidgets[w.id]!==false ? '#34C759' : '#3a3a3c',
-                            color:      visibleWidgets[w.id]!==false ? '#fff'     : '#8e8e93' }}
+                            color:       visibleWidgets[w.id]!==false ? '#fff'    : '#8e8e93' }}
                           onClick={() => toggleWidget(w.id)}>
                           {visibleWidgets[w.id]!==false ? 'ON' : 'OFF'}
                         </button>
@@ -934,10 +657,10 @@ export default function App() {
             </div>
             <div style={{ padding:'10px 20px', borderTop:'0.5px solid rgba(255,255,255,0.08)', fontSize:12, color:'#636366', textAlign:'center' }}>
               {(() => {
-                  const ids = SECTIONS.flatMap(s => s.items.map(i => i.id))
-                  const active = ids.filter(id => visibleWidgets[id] !== false).length
-                  return `${active} / ${ids.length} widget attivi`
-                })()}
+                const ids = SECTIONS.flatMap(s => s.items.map(i => i.id))
+                const active = ids.filter(id => visibleWidgets[id] !== false).length
+                return `${active} / ${ids.length} widget attivi`
+              })()}
             </div>
           </div>
         </div>
@@ -992,41 +715,34 @@ function SentimentKPI({ stats }) {
   const negPct = Math.round(negative/n*100)
   return (
     <div>
-
       <div style={{ display:'flex', height:8, borderRadius:4, overflow:'hidden', marginBottom:8 }}>
         <div style={{ width:`${posPct}%`, background:'#34C759', transition:'width 0.4s' }} />
         <div style={{ width:`${neuPct}%`, background:'#FFCC00', transition:'width 0.4s' }} />
         <div style={{ width:`${negPct}%`, background:'#FF3B30', transition:'width 0.4s' }} />
       </div>
-      <div style={{ display:'flex', gap:10, fontSize:11, flexWrap:'wrap', marginBottom:10 }}>
+      <div style={{ display:'flex', gap:10, fontSize:11, flexWrap:'wrap' }}>
         <span style={{ color:'#34C759' }}>● Positivi: {positive} ({posPct}%)</span>
         <span style={{ color:'#FFCC00' }}>● Neutri: {neutral} ({neuPct}%)</span>
         <span style={{ color:'#FF3B30' }}>● Negativi: {negative} ({negPct}%)</span>
       </div>
-
     </div>
   )
 }
 
 // ─── ToxicityKPI ──────────────────────────────────────────────────────────────
-function ToxicityKPI({ stats, threshold=0.6 }) {
+// Soglia 0.6 coerente con TOXICITY_THRESHOLD nel backend.
+function ToxicityKPI({ stats }) {
   const n = stats.total_messages
   if (n===0) return <Empty />
-  // Classificazione binaria con soglia configurabile (default 0.6).
-  // toxic_score è la probabilità diretta del modello gravitee-io.
-  const allMessages = stats._messages || []
-  const tCount = allMessages.length
-    ? allMessages.filter(m => m.toxicity.toxicity_score > threshold).length
-    : stats.toxicity.toxic_count
-  const pct   = n > 0 ? Math.round(tCount/n*100) : 0
+  const { toxic_count, toxic_ratio } = stats.toxicity
+  const pct   = Math.round(toxic_ratio*100)
   const color = pct>20 ? '#FF3B30' : pct>5 ? '#FF9500' : '#34C759'
-  const thPct = Math.round(threshold*100)
   return (
     <div>
-      <div style={{ fontSize:36, fontWeight:700, color, lineHeight:1 }}>{tCount}</div>
+      <div style={{ fontSize:36, fontWeight:700, color, lineHeight:1 }}>{toxic_count}</div>
       <div style={{ fontSize:12, color:'#8e8e93', marginBottom:12 }}>messaggi tossici su {n} ({pct}%)</div>
       <div style={{ fontSize:11, color:'#636366' }}>
-        Tossico se probabilità &gt; {thPct}%
+        Tossico se probabilità &gt; 60%
       </div>
     </div>
   )
@@ -1059,8 +775,8 @@ function SentimentDistChart({ stats }) {
 }
 
 // ─── TimelineChart ────────────────────────────────────────────────────────────
-// sentiment: 3 curve sovrapposte (positivi/neutri/negativi) con score nlptown [0-100%]
-// toxicity:  una curva per ogni partecipante con probabilità di tossicità [0-100%]
+// sentiment: 3 curve sovrapposte (positivi/neutri/negativi), spanGaps:true
+// toxicity:  una curva per ogni partecipante con probabilità gravitee-io
 function TimelineChart({ messages, metric, yLabel, participants=[], participantColors=[] }) {
   if (!messages?.length) return <Empty />
 
@@ -1089,7 +805,6 @@ function TimelineChart({ messages, metric, yLabel, participants=[], participantC
   const step  = Math.max(1, Math.floor(messages.length / 8))
   const xLbls = pts.map((p, i) => (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : '')
 
-  // Per toxicity: una curva per ogni partecipante, colore assegnato dall'indice
   const toxDatasets = React.useMemo(() => {
     if (metric !== 'toxicity') return []
     const names = participants.length
@@ -1117,9 +832,9 @@ function TimelineChart({ messages, metric, yLabel, participants=[], participantC
 
   const datasets = metric === 'sentiment'
     ? [
-        { label:'Positivi',  data:pts.map(p=>p.isPos?p.y:null), borderColor:'#34C759', backgroundColor:'#34C75920', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#34C759', fill:false, tension:0.1, spanGaps:true },
-        { label:'Neutri',    data:pts.map(p=>p.isNeu?p.y:null), borderColor:'#FFCC00', backgroundColor:'#FFCC0020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FFCC00', fill:false, tension:0.1, spanGaps:true },
-        { label:'Negativi',  data:pts.map(p=>p.isNeg?p.y:null), borderColor:'#FF3B30', backgroundColor:'#FF3B3020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FF3B30', fill:false, tension:0.1, spanGaps:true },
+        { label:'Positivi', data:pts.map(p=>p.isPos?p.y:null), borderColor:'#34C759', backgroundColor:'#34C75920', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#34C759', fill:false, tension:0.1, spanGaps:true },
+        { label:'Neutri',   data:pts.map(p=>p.isNeu?p.y:null), borderColor:'#FFCC00', backgroundColor:'#FFCC0020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FFCC00', fill:false, tension:0.1, spanGaps:true },
+        { label:'Negativi', data:pts.map(p=>p.isNeg?p.y:null), borderColor:'#FF3B30', backgroundColor:'#FF3B3020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FF3B30', fill:false, tension:0.1, spanGaps:true },
       ]
     : toxDatasets
 
@@ -1146,7 +861,6 @@ function TimelineChart({ messages, metric, yLabel, participants=[], participantC
 
   return (
     <div style={{ height:280, position:'relative' }} onClick={handleChartClick} onTouchEnd={handleChartClick}>
-
       {tooltip && tp && (() => {
         const TW = 220
         const leftPos = tooltip.x > 250 ? Math.max(0, tooltip.x - TW - 12) : tooltip.x + 12
@@ -1161,27 +875,21 @@ function TimelineChart({ messages, metric, yLabel, participants=[], participantC
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
               <span style={{ fontSize:18, fontWeight:700, color:labelColor }}>{tp.y}%</span>
-              <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:6,
-                background:labelColor+'22', color:labelColor, textTransform:'uppercase' }}>
+              <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:6, background:labelColor+'22', color:labelColor, textTransform:'uppercase' }}>
                 {tp.label}
               </span>
             </div>
-            <div style={{ fontSize:11, color:'#ebebf5cc', lineHeight:1.5,
-              borderTop:'0.5px solid rgba(255,255,255,0.08)', paddingTop:8 }}>
+            <div style={{ fontSize:11, color:'#ebebf5cc', lineHeight:1.5, borderTop:'0.5px solid rgba(255,255,255,0.08)', paddingTop:8 }}>
               {tp.text.length > 120 ? tp.text.slice(0,120) + '…' : tp.text}
             </div>
           </div>
         )
       })()}
-
-      <Line
-        ref={chartRef}
-        data={{ labels: xLbls, datasets }}
+      <Line ref={chartRef} data={{ labels: xLbls, datasets }}
         options={{
           responsive:true, maintainAspectRatio:false, animation:{ duration:150 },
           plugins:{
-            legend:{ display:true, position:'bottom',
-              labels:{ color:'#8e8e93', font:{ size:11 }, boxWidth:12 } },
+            legend:{ display:true, position:'bottom', labels:{ color:'#8e8e93', font:{ size:11 }, boxWidth:12 } },
             tooltip:{ enabled:false }
           },
           interaction:{ mode:'nearest', axis:'x', intersect:false },
@@ -1214,7 +922,7 @@ function ToxicityGauge({ score }) {
       <div style={{ position:'absolute', bottom:8, textAlign:'center' }}>
         <div style={{ fontSize:22, fontWeight:700, color:col }}>{pct}%</div>
         <div style={{ fontSize:11, color:'#8e8e93' }}>Tossicità {lbl}</div>
-        <div style={{ fontSize:10, color:'#636366' }}>% messaggi con probabilità &gt; 50%</div>
+        <div style={{ fontSize:10, color:'#636366' }}>% messaggi con probabilità &gt; 60%</div>
       </div>
     </div>
   )
@@ -1308,16 +1016,16 @@ const Empty = ({ msg='Nessun dato' }) => (
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const S = {
-  app:     { background:'#1c1c1e', fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif', color:'#fff', minHeight:'100vh' },
-  header:  { position:'sticky', top:0, zIndex:95, background:'rgba(28,28,30,0.97)', backdropFilter:'saturate(180%) blur(20px)', borderBottom:'0.5px solid rgba(255,255,255,0.1)' },
-  hRow:    { maxWidth:1400, margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, padding:'12px 16px 8px' },
-  hLeft:   { display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', flex:1 },
-  logo:    { width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#007AFF,#5856D6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#fff', flexShrink:0 },
-  title:   { fontSize:16, fontWeight:700, margin:0 },
-  subtitle:{ fontSize:11, color:'#8e8e93', margin:0 },
-  select:  { background:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:8, color:'#fff', padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', outline:'none' },
-  btn:     { border:'none', borderRadius:8, padding:'6px 12px', fontSize:13, color:'#fff', cursor:'pointer', background:'#3a3a3c', fontWeight:600, whiteSpace:'nowrap' },
-  grid:    { maxWidth:1400, margin:'0 auto', padding:'clamp(0.75rem,3vw,1.25rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
-  kpiVal:  { fontSize:32, fontWeight:700, color:'#fff', lineHeight:1 },
-  kpiLab:  { fontSize:11, color:'#8e8e93', marginTop:3 },
+  app:      { background:'#1c1c1e', fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif', color:'#fff', minHeight:'100vh' },
+  header:   { position:'sticky', top:0, zIndex:95, background:'rgba(28,28,30,0.97)', backdropFilter:'saturate(180%) blur(20px)', borderBottom:'0.5px solid rgba(255,255,255,0.1)' },
+  hRow:     { maxWidth:1400, margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, padding:'12px 16px 8px' },
+  hLeft:    { display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', flex:1 },
+  logo:     { width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#007AFF,#5856D6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#fff', flexShrink:0 },
+  title:    { fontSize:16, fontWeight:700, margin:0 },
+  subtitle: { fontSize:11, color:'#8e8e93', margin:0 },
+  select:   { background:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.18)', borderRadius:8, color:'#fff', padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', outline:'none' },
+  btn:      { border:'none', borderRadius:8, padding:'6px 12px', fontSize:13, color:'#fff', cursor:'pointer', background:'#3a3a3c', fontWeight:600, whiteSpace:'nowrap' },
+  grid:     { maxWidth:1400, margin:'0 auto', padding:'clamp(0.75rem,3vw,1.25rem)', display:'grid', gap:'clamp(0.75rem,2vw,1rem)', alignItems:'start' },
+  kpiVal:   { fontSize:32, fontWeight:700, color:'#fff', lineHeight:1 },
+  kpiLab:   { fontSize:11, color:'#8e8e93', marginTop:3 },
 }
