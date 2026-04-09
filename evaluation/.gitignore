@@ -1,0 +1,5 @@
+evaluation/.venv/
+evaluation/novielli_gold.csv 
+evaluation/raman_toxicity.csv 
+**/venv/
+**/.venv/
