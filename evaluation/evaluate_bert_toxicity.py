@@ -124,6 +124,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model     = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME).to(DEVICE)
     model.eval()
+    print("Classi del modello:", model.config.id2label)
     print(f"Modello caricato in {time.time() - t0:.1f}s\n")
 
     # Inferenza
