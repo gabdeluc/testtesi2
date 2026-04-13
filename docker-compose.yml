@@ -17,6 +17,14 @@ services:
       - TOXICITY_SERVICE_URL=http://bert-toxicity:5003
       # In produzione sostituire con il dominio specifico del frontend
       - CORS_ORIGINS=*
+      # ── Integrazione Arianna ──────────────────────────────────────
+      # Default false: l'API di Arianna non è ancora disponibile per i test.
+      # Quando sarà disponibile:  USE_ARIANNA=true docker compose up
+      - USE_ARIANNA=${USE_ARIANNA:-false}
+      # ── Soglia tossicità configurabile ────────────────────────────
+      # Default 0.6 (60%) — ragionevole ma non universale (cfr. README §12).
+      # Per modificare:  TOXICITY_THRESHOLD=0.5 docker compose up
+      - TOXICITY_THRESHOLD=${TOXICITY_THRESHOLD:-0.6}
     depends_on:
       bert-sentiment:
         condition: service_healthy
@@ -51,7 +59,6 @@ services:
       interval: 60s
       timeout: 15s
       retries: 5
-      # start_period lungo perché il modello può impiegare minuti al primo avvio
       start_period: 180s
     restart: unless-stopped
     networks:
@@ -80,7 +87,7 @@ services:
       interval: 60s
       timeout: 15s
       retries: 5
-      start_period: 120s
+      start_period: 180s
     restart: unless-stopped
     networks:
       - ml-network
@@ -101,14 +108,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      - backend
     restart: unless-stopped
     networks:
       - ml-network

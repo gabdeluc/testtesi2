@@ -53,7 +53,7 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Soglia classificazione tossicità — coerente tra backend e frontend
-TOXICITY_THRESHOLD = 0.6
+TOXICITY_THRESHOLD = float(os.getenv("TOXICITY_THRESHOLD", "0.6"))
 
 class SentimentLabel(str, Enum):
     POSITIVE = "positive"
@@ -638,14 +638,15 @@ def root():
 
 @app.get("/health")
 def health():
-    """Health check."""
+    """Health check — espone anche la soglia di tossicità per il frontend."""
     return {
-        "status":         "healthy",
-        "service":        "backend-gateway",
-        "use_arianna":    USE_ARIANNA,
-        "sentiment_mock": sentiment_predictor._use_mock if sentiment_predictor else None,
-        "toxicity_mock":  toxicity_detector._use_mock   if toxicity_detector  else None,
-        "meetings":       list(MOCK_MEETINGS.keys()),
+        "status":              "healthy",
+        "service":             "backend-gateway",
+        "use_arianna":         USE_ARIANNA,
+        "toxicity_threshold":  TOXICITY_THRESHOLD,
+        "sentiment_mock":      sentiment_predictor._use_mock if sentiment_predictor else None,
+        "toxicity_mock":       toxicity_detector._use_mock   if toxicity_detector  else None,
+        "meetings":            list(MOCK_MEETINGS.keys()),
     }
 
 
