@@ -66,6 +66,7 @@ export default function App() {
   const [participants,  setParticipants]  = useState([])
   const [loading, setLoading]             = useState(false)
   const [error,   setError]               = useState(null)
+  const [toxicityThreshold, setToxicityThreshold] = useState(0.6)
 
   // ── Playback ──────────────────────────────────────────────────────────────
   const [playbackIndex, setPlaybackIndex] = useState(0)
@@ -223,6 +224,10 @@ export default function App() {
 
   useEffect(() => {
     fetch(`${API_URL}/meetings`).then(r=>r.json()).then(d=>setMeetingList(d.meetings||[])).catch(()=>{})
+    // Legge la soglia di tossicità dal backend (configurabile via env TOXICITY_THRESHOLD)
+    fetch(`${API_URL}/health`).then(r=>r.json()).then(d=>{
+      if (d.toxicity_threshold != null) setToxicityThreshold(d.toxicity_threshold)
+    }).catch(()=>{})
   }, [])
   useEffect(() => { loadMeeting(selectedMeeting) }, [selectedMeeting, loadMeeting])
 
@@ -395,12 +400,12 @@ export default function App() {
     { title:'KPI', items:[
       { id:'messages',    name:'Messaggi',           desc:'Contatore messaggi ricevuti.' },
       { id:'sentimentKPI',name:'Sentiment %',        desc:'Distribuzione positivo/neutro/negativo.' },
-      { id:'toxicityKPI', name:'Tossicità',          desc:'Conteggio e % messaggi tossici (soglia 60%).' },
+      { id:'toxicityKPI', name:'Tossicità',          desc:'Conteggio e % messaggi tossici.' },
       { id:'healthScore', name:'Sentiment Polarity', desc:'Indice [-1,+1]: (positivi-negativi)/totale.' },
     ]},
     { title:'Grafici', items:[
       { id:'sentimentDist',     name:'Distribuzione Sentiment', desc:'Barra pos/neu/neg in percentuale.' },
-      { id:'timelineSentiment', name:'Timeline Sentiment',      desc:'Score nlptown per ogni messaggio nel tempo.' },
+      { id:'timelineSentiment', name:'Timeline Sentiment',      desc:'Polarity per ogni messaggio nel tempo.' },
       { id:'timelineToxicity',  name:'Timeline Tossicità',      desc:'Probabilità di tossicità per partecipante.' },
     ]},
     { title:'Altro', items:[
@@ -426,7 +431,7 @@ export default function App() {
     const wMessages = wgt('messages','Messaggi',false,
       <><div style={S.kpiVal}>{F('messages').length}</div><div style={S.kpiLab}>messaggi ricevuti</div></>)
     const wSentKPI  = wgt('sentimentKPI','Sentiment',false,    <SentimentKPI stats={S_id('sentimentKPI')} />)
-    const wToxKPI   = wgt('toxicityKPI','Tossicità',false,     <ToxicityKPI  stats={S_id('toxicityKPI')} />)
+    const wToxKPI   = wgt('toxicityKPI','Tossicità',false,     <ToxicityKPI  stats={S_id('toxicityKPI')} threshold={toxicityThreshold} />)
     const wHealth   = wgt('healthScore','Sentiment Polarity Index',false,(() => {
       if (polarity === null) return <Empty />
       const color = polarity>=0.3?'#34C759':polarity<=-0.3?'#FF3B30':'#FF9500'
@@ -443,11 +448,27 @@ export default function App() {
       )
     })())
     const wSentDist = wgt('sentimentDist','Distribuzione Sentiment',true, <SentimentDistChart stats={S_id('sentimentDist')} />)
-    const wTimeSent = wgt('timelineSentiment','Timeline Sentiment — tocca un punto per vedere il messaggio',true,
-      <TimelineChart messages={F('timelineSentiment')} metric="sentiment" yLabel="Score sentiment nlptown [0–100%]" />)
-    const wTimeTox  = wgt('timelineToxicity','Timeline Tossicità — curva per partecipante',true,
-      <TimelineChart messages={liveTranscript} metric="toxicity" yLabel="Probabilità di tossicità gravitee-io [0–100%]"
-        participants={participants} participantColors={PARTICIPANT_COLORS} />)
+    const wTimeSent = wgt('timelineSentiment',
+      'Timeline Sentiment — polarity per messaggio nel tempo', true,
+      <TimelineChart
+        messages={F('timelineSentiment')}
+        metric="sentiment"
+        yLabel="Polarity  [−1 negativo · 0 neutro · +1 positivo]"
+        participants={participants}
+        participantColors={PARTICIPANT_COLORS}
+      />
+    )
+
+    const wTimeTox = wgt('timelineToxicity',
+      'Timeline Tossicità — probabilità per partecipante', true,
+      <TimelineChart
+        messages={F('timelineToxicity')}
+        metric="toxicity"
+        yLabel="Probabilità tossicità gravitee-io [0–100%]"
+        participants={participants}
+        participantColors={PARTICIPANT_COLORS}
+      />
+    )
 
     const wRoster   = wgt('participantRoster','Partecipanti',true,
       <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
@@ -727,19 +748,20 @@ function SentimentKPI({ stats }) {
 }
 
 // ─── ToxicityKPI ──────────────────────────────────────────────────────────────
-// Soglia 0.6 coerente con TOXICITY_THRESHOLD nel backend.
-function ToxicityKPI({ stats }) {
+// Soglia letta dal backend via /health (configurabile con env TOXICITY_THRESHOLD).
+function ToxicityKPI({ stats, threshold }) {
   const n = stats.total_messages
   if (n===0) return <Empty />
   const { toxic_count, toxic_ratio } = stats.toxicity
   const pct   = Math.round(toxic_ratio*100)
   const color = pct>20 ? '#FF3B30' : pct>5 ? '#FF9500' : '#34C759'
+  const threshPct = Math.round((threshold ?? 0.6) * 100)
   return (
     <div>
       <div style={{ fontSize:36, fontWeight:700, color, lineHeight:1 }}>{toxic_count}</div>
       <div style={{ fontSize:12, color:'#8e8e93', marginBottom:12 }}>messaggi tossici su {n} ({pct}%)</div>
       <div style={{ fontSize:11, color:'#636366' }}>
-        Tossico se probabilità &gt; 60%
+        Tossico se probabilità &gt; {threshPct}%
       </div>
     </div>
   )
@@ -772,73 +794,151 @@ function SentimentDistChart({ stats }) {
 }
 
 // ─── TimelineChart ────────────────────────────────────────────────────────────
-// sentiment: 3 curve sovrapposte (positivi/neutri/negativi), spanGaps:true
-// toxicity:  una curva per ogni partecipante con probabilità gravitee-io
-function TimelineChart({ messages, metric, yLabel, participants=[], participantColors=[] }) {
+// sentiment: polarity [-1, +1] con overlay per partecipante
+// toxicity:  probabilità [0-100%] con overlay per partecipante
+function TimelineChart({ messages, metric, yLabel, participants = [], participantColors = [] }) {
   if (!messages?.length) return <Empty />
 
   const [tooltip, setTooltip] = React.useState(null)
-  const chartRef = React.useRef(null)
+  const chartRef              = React.useRef(null)
 
+  // ── Asse X: tempo relativo dal primo messaggio ─────────────────
   const base = new Date(messages[0].created_at).getTime()
   const fmt  = ts => {
     const s = Math.max(0, (new Date(ts).getTime() - base) / 1000)
-    return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   }
 
-  const pts = messages.map(m => ({
-    lbl:   fmt(m.created_at),
-    nick:  m.participant_name,
-    text:  m.transcribed_text,
-    label: metric === 'sentiment' ? m.sentiment.label : (m.toxicity.is_toxic ? 'tossico' : 'non tossico'),
-    y: metric === 'sentiment'
-      ? Math.round(m.sentiment.score * 100)
-      : Math.round(m.toxicity.toxicity_score * 100),
-    isPos: m.sentiment.label === 'positive' ? 1 : 0,
-    isNeu: m.sentiment.label === 'neutral'  ? 1 : 0,
-    isNeg: m.sentiment.label === 'negative' ? 1 : 0,
-  }))
+  // ── Punti dati ─────────────────────────────────────────────────
+  const pts = messages.map(m => {
+    const polarity    = m.sentiment.polarity ?? 0
+    const confidence  = m.sentiment.confidence ?? 0
+    const toxScore    = m.toxicity.toxicity_score ?? 0
 
-  const step  = Math.max(1, Math.floor(messages.length / 8))
-  const xLbls = pts.map((p, i) => (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : '')
+    return {
+      lbl:        fmt(m.created_at),
+      nick:       m.participant_name,
+      text:       m.transcribed_text,
+      sentLabel:  m.sentiment.label,
+      confidence: Math.round(confidence * 100),
+      y: metric === 'sentiment'
+        ? polarity
+        : Math.round(toxScore * 100),
+      isToxic: m.toxicity.is_toxic,
+    }
+  })
 
-  const toxDatasets = React.useMemo(() => {
-    if (metric !== 'toxicity') return []
-    const names = participants.length
-      ? participants.map(p => p.name)
-      : [...new Set(messages.map(m => m.participant_name))]
-    return names.map((name, i) => {
-      const color = participantColors[i % participantColors.length] || '#888'
-      return {
-        label: name,
-        data: pts.map(p => p.nick === name ? p.y : null),
-        borderColor: color,
-        backgroundColor: color + '20',
-        borderWidth: 1.5,
-        pointRadius: 4,
-        pointHoverRadius: 8,
-        pointBackgroundColor: pts.map(p =>
-          p.nick === name ? (p.label === 'tossico' ? '#FF3B30' : color) : 'transparent'
-        ),
-        fill: false,
-        tension: 0.1,
-        spanGaps: true,
+  // ── Etichette X sparse ─────────────────────────────────────────
+  const step  = Math.max(1, Math.floor(messages.length / 10))
+  const xLbls = pts.map((p, i) =>
+    (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : ''
+  )
+
+  // ── Nomi partecipanti unici ────────────────────────────────────
+  const participantNames = participants.length
+    ? participants.map(p => p.name)
+    : [...new Set(messages.map(m => m.participant_name))]
+
+  // ── Decide se overlay o singolo partecipante ───────────────────
+  const isMultiParticipant = participantNames.length > 1
+    && new Set(messages.map(m => m.participant_name)).size > 1
+
+  // ── Dataset builder ────────────────────────────────────────────
+  const buildDatasets = () => {
+    if (metric === 'sentiment') {
+      if (isMultiParticipant) {
+        return participantNames.map((name, i) => {
+          const color = participantColors[i % participantColors.length] || '#888'
+          return {
+            label: name,
+            data: pts.map(p => p.nick === name ? p.y : null),
+            borderColor: color,
+            backgroundColor: color + '20',
+            borderWidth: 1.5,
+            pointRadius: 4,
+            pointHoverRadius: 8,
+            pointBackgroundColor: pts.map(p => {
+              if (p.nick !== name) return 'transparent'
+              return p.sentLabel === 'positive' ? '#34C759'
+                   : p.sentLabel === 'negative' ? '#FF3B30'
+                   : '#FFCC00'
+            }),
+            fill: false,
+            tension: 0.15,
+            spanGaps: true,
+          }
+        })
+      } else {
+        const labelColor = pts.map(p =>
+          p.sentLabel === 'positive' ? '#34C759'
+          : p.sentLabel === 'negative' ? '#FF3B30'
+          : '#FFCC00'
+        )
+        return [{
+          label: 'Polarity',
+          data: pts.map(p => p.y),
+          borderColor: '#636366',
+          backgroundColor: 'rgba(100,100,100,0.1)',
+          borderWidth: 1.5,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+          pointBackgroundColor: labelColor,
+          pointBorderColor: labelColor,
+          fill: false,
+          tension: 0.15,
+        }]
       }
-    })
-  }, [metric, messages, participants, participantColors, pts])
 
-  const datasets = metric === 'sentiment'
-    ? [
-        { label:'Positivi', data:pts.map(p=>p.isPos?p.y:null), borderColor:'#34C759', backgroundColor:'#34C75920', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#34C759', fill:false, tension:0.1, spanGaps:true },
-        { label:'Neutri',   data:pts.map(p=>p.isNeu?p.y:null), borderColor:'#FFCC00', backgroundColor:'#FFCC0020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FFCC00', fill:false, tension:0.1, spanGaps:true },
-        { label:'Negativi', data:pts.map(p=>p.isNeg?p.y:null), borderColor:'#FF3B30', backgroundColor:'#FF3B3020', borderWidth:1.5, pointRadius:4, pointBackgroundColor:'#FF3B30', fill:false, tension:0.1, spanGaps:true },
-      ]
-    : toxDatasets
+    } else {
+      if (isMultiParticipant) {
+        return participantNames.map((name, i) => {
+          const color = participantColors[i % participantColors.length] || '#888'
+          return {
+            label: name,
+            data: pts.map(p => p.nick === name ? p.y : null),
+            borderColor: color,
+            backgroundColor: color + '20',
+            borderWidth: 1.5,
+            pointRadius: 4,
+            pointHoverRadius: 8,
+            pointBackgroundColor: pts.map(p =>
+              p.nick === name
+                ? (p.isToxic ? '#FF3B30' : color)
+                : 'transparent'
+            ),
+            fill: false,
+            tension: 0.15,
+            spanGaps: true,
+          }
+        })
+      } else {
+        const ptColors = pts.map(p => p.isToxic ? '#FF3B30' : '#34C759')
+        return [{
+          label: 'Toxicity probability (%)',
+          data: pts.map(p => p.y),
+          borderColor: '#FF6B6B',
+          backgroundColor: '#FF6B6B20',
+          borderWidth: 1.5,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+          pointBackgroundColor: ptColors,
+          pointBorderColor: ptColors,
+          fill: true,
+          tension: 0.15,
+        }]
+      }
+    }
+  }
 
+  const datasets = buildDatasets()
+
+  // ── Click handler per tooltip persistente ──────────────────────
   const handleChartClick = (event) => {
     const chart = chartRef.current
     if (!chart) return
-    const elements = chart.getElementsAtEventForMode(event.nativeEvent, 'nearest', { intersect: false, axis: 'x' }, false)
+    const elements = chart.getElementsAtEventForMode(
+      event.nativeEvent, 'nearest', { intersect: false, axis: 'x' }, false
+    )
     if (!elements.length) { setTooltip(null); return }
     const idx = elements[0].index
     const pt  = pts[idx]
@@ -849,59 +949,126 @@ function TimelineChart({ messages, metric, yLabel, participants=[], participantC
     setTooltip({ x: ex - rect.left, y: ey - rect.top, idx, pt })
   }
 
+  // ── Configurazione assi Y ─────────────────────────────────────
+  const yConfig = metric === 'sentiment'
+    ? {
+        min: -1, max: 1,
+        grid: { color: 'rgba(255,255,255,0.05)' },
+        ticks: {
+          color: '#8e8e93',
+          stepSize: 0.5,
+          callback: v => v > 0 ? `+${v}` : `${v}`,
+        },
+        title: { display: true, text: yLabel, color: '#636366', font: { size: 10 } }
+      }
+    : {
+        min: 0, max: 100,
+        grid: { color: 'rgba(255,255,255,0.05)' },
+        ticks: { color: '#8e8e93', callback: v => v + '%' },
+        title: { display: true, text: yLabel, color: '#636366', font: { size: 10 } }
+      }
+
+  // ── Tooltip inline ─────────────────────────────────────────────
   const tp = tooltip?.pt
   const labelColor = tp
     ? (metric === 'sentiment'
-        ? (tp.label === 'positive' ? '#34C759' : tp.label === 'negative' ? '#FF3B30' : '#FFCC00')
-        : (tp.label === 'tossico' ? '#FF3B30' : '#34C759'))
+        ? (tp.sentLabel === 'positive' ? '#34C759' : tp.sentLabel === 'negative' ? '#FF3B30' : '#FFCC00')
+        : (tp.isToxic ? '#FF3B30' : '#34C759'))
     : '#fff'
 
   return (
-    <div style={{ height:280, position:'relative' }} onClick={handleChartClick} onTouchEnd={handleChartClick}>
-      {tooltip && tp && (() => {
-        const TW = 220
-        const leftPos = tooltip.x > 250 ? Math.max(0, tooltip.x - TW - 12) : tooltip.x + 12
-        const topPos  = Math.max(0, tooltip.y - 130)
-        return (
-          <div style={{ position:'absolute', top:topPos, left:leftPos, width:TW, zIndex:20,
-            pointerEvents:'none', background:'rgba(28,28,30,0.97)', borderRadius:12,
-            border:`1px solid ${labelColor}40`, padding:'10px 12px', boxShadow:'0 4px 20px rgba(0,0,0,0.5)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-              <span style={{ fontSize:11, color:'#8e8e93' }}>{tp.lbl}</span>
-              <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{tp.nick}</span>
-            </div>
-            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-              <span style={{ fontSize:18, fontWeight:700, color:labelColor }}>{tp.y}%</span>
-              <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:6, background:labelColor+'22', color:labelColor, textTransform:'uppercase' }}>
-                {tp.label}
-              </span>
-            </div>
-            <div style={{ fontSize:11, color:'#ebebf5cc', lineHeight:1.5, borderTop:'0.5px solid rgba(255,255,255,0.08)', paddingTop:8 }}>
-              {tp.text.length > 120 ? tp.text.slice(0,120) + '…' : tp.text}
-            </div>
+    <div style={{ height: 300, position: 'relative' }}>
+      <div onClick={handleChartClick} onTouchEnd={handleChartClick}
+           style={{ height: '100%', cursor: 'crosshair' }}>
+        <Line ref={chartRef}
+          data={{ labels: xLbls, datasets }}
+          options={{
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 150 },
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
+            plugins: {
+              legend: {
+                display: isMultiParticipant || metric === 'sentiment',
+                position: 'top',
+                labels: { color: '#8e8e93', font: { size: 11 }, boxWidth: 12, padding: 8 }
+              },
+              tooltip: {
+                backgroundColor: 'rgba(28,28,30,0.95)',
+                callbacks: {
+                  title: items => {
+                    const idx = items[0].dataIndex
+                    return `${pts[idx].lbl} · ${pts[idx].nick}`
+                  },
+                  label: ctx => {
+                    const idx = ctx.dataIndex
+                    const p   = pts[idx]
+                    if (metric === 'sentiment') {
+                      const sign = p.y >= 0 ? '+' : ''
+                      return `Polarity: ${sign}${p.y.toFixed(2)} — ${p.sentLabel} (confidence ${p.confidence}%)`
+                    } else {
+                      return `Toxicity: ${p.y}% — ${p.isToxic ? 'TOSSICO' : 'non tossico'}`
+                    }
+                  },
+                  afterLabel: ctx => {
+                    const t = pts[ctx.dataIndex].text
+                    return t.length > 60 ? t.slice(0, 60) + '…' : t
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: { color: '#8e8e93', maxRotation: 0 },
+                title: { display: true, text: "Minuti dall'inizio del meeting", color: '#636366', font: { size: 10 } }
+              },
+              y: yConfig
+            }
+          }}
+        />
+      </div>
+
+      {/* Tooltip persistente on-click */}
+      {tp && (
+        <div style={{
+          position: 'absolute', left: Math.min(tooltip.x, 280), top: Math.max(tooltip.y - 80, 4),
+          background: 'rgba(28,28,30,0.96)', border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 10, padding: '8px 12px', maxWidth: 280, zIndex: 10,
+          fontSize: 12, color: '#e5e5ea', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          pointerEvents: 'none'
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {tp.lbl} · <span style={{ color: labelColor }}>{tp.nick}</span>
           </div>
-        )
-      })()}
-      <Line ref={chartRef} data={{ labels: xLbls, datasets }}
-        options={{
-          responsive:true, maintainAspectRatio:false, animation:{ duration:150 },
-          plugins:{
-            legend:{ display:true, position:'bottom', labels:{ color:'#8e8e93', font:{ size:11 }, boxWidth:12 } },
-            tooltip:{ enabled:false }
-          },
-          interaction:{ mode:'nearest', axis:'x', intersect:false },
-          scales:{
-            x:{ grid:{ color:'rgba(255,255,255,0.05)' }, ticks:{ color:'#8e8e93', maxRotation:0 },
-              title:{ display:true, text:"Minuti dall'inizio del meeting", color:'#636366', font:{ size:10 } } },
-            y:{ min:0, max:100, grid:{ color:'rgba(255,255,255,0.05)' },
-              ticks:{ color:'#8e8e93', callback:v=>v+'%' },
-              title:{ display:true, text:yLabel, color:'#636366', font:{ size:10 } } }
-          }
-        }}
-      />
+          {metric === 'sentiment' ? (
+            <>
+              <div>Label: <span style={{ color: labelColor, fontWeight: 600 }}>{tp.sentLabel}</span></div>
+              <div>Confidence: {tp.confidence}%</div>
+              <div>Polarity: {tp.y >= 0 ? '+' : ''}{tp.y.toFixed(2)}</div>
+            </>
+          ) : (
+            <div>Toxicity: <span style={{ color: labelColor, fontWeight: 600 }}>
+              {tp.y}% — {tp.isToxic ? 'TOSSICO' : 'non tossico'}
+            </span></div>
+          )}
+          <div style={{ marginTop: 4, color: '#8e8e93', fontStyle: 'italic' }}>
+            "{tp.text.length > 100 ? tp.text.slice(0, 100) + '…' : tp.text}"
+          </div>
+        </div>
+      )}
+
+      {/* Legenda semantica per sentiment (quando singolo partecipante) */}
+      {metric === 'sentiment' && !isMultiParticipant && (
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 4, fontSize: 11 }}>
+          <span style={{ color: '#34C759' }}>● Positivo</span>
+          <span style={{ color: '#FFCC00' }}>● Neutro</span>
+          <span style={{ color: '#FF3B30' }}>● Negativo</span>
+        </div>
+      )}
     </div>
   )
 }
+
 
 // ─── ParticipantRoster ────────────────────────────────────────────────────────
 function ParticipantRoster({ stats, participantColors }) {
