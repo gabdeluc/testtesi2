@@ -452,6 +452,7 @@ export default function App() {
       'Timeline Sentiment — polarity per messaggio nel tempo', true,
       <TimelineChart
         messages={F('timelineSentiment')}
+        allTranscript={liveTranscript}
         metric="sentiment"
         yLabel="Polarity  [−1 negativo · 0 neutro · +1 positivo]"
         participants={participants}
@@ -463,6 +464,7 @@ export default function App() {
       'Timeline Tossicità — probabilità per partecipante', true,
       <TimelineChart
         messages={F('timelineToxicity')}
+        allTranscript={liveTranscript}
         metric="toxicity"
         yLabel="Probabilità tossicità gravitee-io [0–100%]"
         participants={participants}
@@ -796,14 +798,16 @@ function SentimentDistChart({ stats }) {
 // ─── TimelineChart ────────────────────────────────────────────────────────────
 // sentiment: polarity [-1, +1] con overlay per partecipante
 // toxicity:  probabilità [0-100%] con overlay per partecipante
-function TimelineChart({ messages, metric, yLabel, participants = [], participantColors = [] }) {
+function TimelineChart({ messages, allTranscript, metric, yLabel, participants = [], participantColors = [] }) {
   if (!messages?.length) return <Empty />
 
   const [tooltip, setTooltip] = React.useState(null)
   const chartRef              = React.useRef(null)
 
-  // ── Asse X: tempo relativo dal primo messaggio ─────────────────
-  const base = new Date(messages[0].created_at).getTime()
+  // ── Asse X: tempo relativo dal primo messaggio del meeting ──────────
+  // Usiamo il primo messaggio di 'allTranscript' come riferimento temporale assoluto
+  // per garantire che i timestamp siano coerenti tra i vari widget filtrati.
+  const base = allTranscript.length > 0 ? new Date(allTranscript[0].created_at).getTime() : 0
   const fmt  = ts => {
     const s = Math.max(0, (new Date(ts).getTime() - base) / 1000)
     return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`

@@ -295,12 +295,14 @@ Copertura: ~95% statement, ~91% branch. Tutti i 202 test completano in 2.73 seco
 
 ### Modalità operativa in produzione
 
-In produzione, la fonte dati è ARIANNA. La modalità con dati mock è il caso **eccezionale**, da abilitare esplicitamente durante lo sviluppo. Il sistema funziona così:
+Il sistema è configurato per l'integrazione con l'API di ARIANNA per default (`USE_ARIANNA=true`). Se l'API di ARIANNA non è raggiungibile, il sistema restituirà un errore 502/504. Per lo sviluppo locale o test senza ARIANNA, è possibile forzare l'uso dei dati mock impostando `USE_ARIANNA=false`.
+
+Il sistema funziona così:
 
 1. Il Backend Gateway legge la variabile `USE_ARIANNA` all'avvio.
-2. Se `USE_ARIANNA=true`, ogni chiamata a `/meeting/{id}/analysis` interroga l'API di ARIANNA per ottenere le trascrizioni reali della stanza.
+2. Se `USE_ARIANNA=true` (default), ogni chiamata a `/meeting/{id}/analysis` interroga l'API di ARIANNA per ottenere le trascrizioni reali della stanza.
 3. I modelli BERT analizzano le trascrizioni ricevute in tempo reale.
-4. Se `USE_ARIANNA=false` (default di sviluppo), il backend genera trascrizioni deterministiche da `mock_data.yaml`.
+4. Se `USE_ARIANNA=false`, il backend genera trascrizioni deterministiche da `mock_data.yaml`.
 
 ### Configurazione per produzione
 
@@ -372,9 +374,9 @@ pip install pytest pytest-asyncio httpx pyyaml fastapi
 
 **BERT** — modello linguistico pre-addestrato di Google. Usati: `nlptown/bert-base-multilingual-uncased-sentiment` e `gravitee-io/bert-small-toxicity`.
 
-**SPI** — Sentiment Polarity Index: `(positivi − negativi) / totale ∈ [-1, +1]` (Liu 2012).
+**SPI** — Sentiment Polarity Index: `(positivi − negativi) / totale ∈ [-1, +1]` (Liu 2012). La scala `[-1, +1]` è lo standard de facto per la sentiment polarity, dove -1 indica negatività estrema, 0 neutralità e +1 positività estrema. Nel grafico "Timeline Sentiment", ogni punto rappresenta la polarity del singolo messaggio, calcolata come `label_sign * score * confidence`.
 
-**Probabilità di tossicità** — output diretto del modello gravitee-io: valore continuo `[0,1]`. Messaggi con probabilità > 0.6 sono classificati come tossici (`is_toxic=true`). Costante `TOXICITY_THRESHOLD = 0.6` nel backend.
+**Soglia di tossicità configurabile** — La soglia per la classificazione binaria tossico/non-tossico è configurabile tramite la variabile d'ambiente `TOXICITY_THRESHOLD` (default `0.6`). Messaggi con una probabilità di tossicità (output del modello `gravitee-io`) superiore a tale soglia sono marcati come `is_toxic=true`. La confidenza del modello è integrata nel calcolo dello score di tossicità restituito dal microservizio.
 
 **Mock Fallback** — keyword matching deterministico (`hash(text)` come seed), calibrato sui dataset di Novielli et al. e Raman et al.
 
