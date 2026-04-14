@@ -18,9 +18,9 @@ services:
       # In produzione sostituire con il dominio specifico del frontend
       - CORS_ORIGINS=*
       # ── Integrazione Arianna ──────────────────────────────────────
-      # Default true: il sistema cerca la connessione con ARIANNA per default.
-      # Per usare i dati mock:  USE_ARIANNA=false docker compose up
-      - USE_ARIANNA=${USE_ARIANNA:-true}
+      # Default false: l'API di Arianna non è ancora disponibile per i test.
+      # Quando sarà disponibile:  USE_ARIANNA=true docker compose up
+      - USE_ARIANNA=${USE_ARIANNA:-false}
       # ── Soglia tossicità configurabile ────────────────────────────
       # Default 0.6 (60%) — ragionevole ma non universale (cfr. README §12).
       # Per modificare:  TOXICITY_THRESHOLD=0.5 docker compose up

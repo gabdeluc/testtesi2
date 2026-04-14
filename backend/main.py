@@ -40,7 +40,7 @@ from config.config_loader import config_loader
 SENTIMENT_SERVICE_URL = os.getenv("BERT_SERVICE_URL",      "http://bert-sentiment:5001")
 TOXICITY_SERVICE_URL  = os.getenv("TOXICITY_SERVICE_URL",  "http://bert-toxicity:5003")
 
-USE_ARIANNA      = os.getenv("USE_ARIANNA",      "true").lower() == "true"
+USE_ARIANNA      = os.getenv("USE_ARIANNA",      "false").lower() == "true"
 ARIANNA_BASE_URL = os.getenv("ARIANNA_BASE_URL", "http://arianna-host:3000")
 
 # CORS_ORIGINS: in produzione impostare la variabile d'ambiente con il dominio
