@@ -21,6 +21,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 from enum import Enum
+import os
 
 
 # ============================================
@@ -314,7 +315,7 @@ class ToxicityDetector:
     def __init__(self, service_url: str, http_client):
         self.service_url = service_url
         self.http_client = http_client
-        self.threshold = 0.5  # Binary classification threshold
+        self.threshold = float(os.getenv("TOXICITY_THRESHOLD", "0.6"))  # Binary classification threshold
     
     def _get_severity(self, score: float) -> ToxicitySeverity:
         """
