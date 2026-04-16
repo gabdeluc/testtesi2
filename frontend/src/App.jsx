@@ -456,6 +456,7 @@ export default function App() {
         yLabel="Polarity  [−1 negativo · 0 neutro · +1 positivo]"
         participants={participants}
         participantColors={PARTICIPANT_COLORS}
+        meetingStartTime={allTranscript[0]?.created_at}
       />
     )
 
@@ -467,6 +468,7 @@ export default function App() {
         yLabel="Probabilità tossicità gravitee-io [0–100%]"
         participants={participants}
         participantColors={PARTICIPANT_COLORS}
+        meetingStartTime={allTranscript[0]?.created_at}
       />
     )
 
@@ -474,7 +476,8 @@ export default function App() {
       <ParticipantRoster stats={getParticipantStats()} participantColors={PARTICIPANT_COLORS} />)
     const wStream   = wgt('messageStream','Stream Messaggi',true,
       <MessageStream messages={F('messageStream')} limit={widgetConfigs.messageStream?.limit||30}
-        participantColors={PARTICIPANT_COLORS} participants={participants} />)
+        participantColors={PARTICIPANT_COLORS} participants={participants}
+        meetingStartTime={allTranscript[0]?.created_at} />)
     return [wMessages, wHealth, wSentKPI, wToxKPI, wSentDist, wTimeSent, wTimeTox, wStream, wRoster].filter(Boolean)
   }
 
@@ -796,14 +799,14 @@ function SentimentDistChart({ stats }) {
 // ─── TimelineChart ────────────────────────────────────────────────────────────
 // sentiment: polarity [-1, +1] con overlay per partecipante
 // toxicity:  probabilità [0-100%] con overlay per partecipante
-function TimelineChart({ messages, metric, yLabel, participants = [], participantColors = [] }) {
+function TimelineChart({ messages, metric, yLabel, participants = [], participantColors = [], meetingStartTime }) {
   if (!messages?.length) return <Empty />
 
   const [tooltip, setTooltip] = React.useState(null)
   const chartRef              = React.useRef(null)
 
   // ── Asse X: tempo relativo dal primo messaggio ─────────────────
-  const base = new Date(messages[0].created_at).getTime()
+  const base = new Date(meetingStartTime || messages[0].created_at).getTime()
   const fmt  = ts => {
     const s = Math.max(0, (new Date(ts).getTime() - base) / 1000)
     return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -1116,10 +1119,10 @@ function ParticipantRoster({ stats, participantColors }) {
 }
 
 // ─── MessageStream ────────────────────────────────────────────────────────────
-function MessageStream({ messages, limit, participantColors, participants }) {
+function MessageStream({ messages, limit, participantColors, participants, meetingStartTime }) {
   if (!messages?.length) return <Empty msg="Nessun messaggio" />
   const sc = l => ({ positive:'#34C759', neutral:'#FFCC00', negative:'#FF3B30' }[l]||'#8e8e93')
-  const base = new Date(messages[0].created_at).getTime()
+  const base = new Date(meetingStartTime || messages[0].created_at).getTime()
   const fmt  = ts => {
     const s = Math.max(0,(new Date(ts).getTime()-base)/1000)
     return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`

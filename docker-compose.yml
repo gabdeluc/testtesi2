@@ -18,11 +18,13 @@ services:
       # In produzione sostituire con il dominio specifico del frontend
       - CORS_ORIGINS=*
       # ── Integrazione Arianna ──────────────────────────────────────
-      # Default false: l'API di Arianna non è ancora disponibile per i test.
-      # Quando sarà disponibile:  USE_ARIANNA=true docker compose up
-      - USE_ARIANNA=${USE_ARIANNA:-false}
+      # Default true: il sistema cerca la connessione con ARIANNA all'avvio.
+      # Se ARIANNA non è raggiungibile, il backend restituisce errore 502/504.
+      # Per sviluppo locale senza ARIANNA:  USE_ARIANNA=false docker compose up
+      - USE_ARIANNA=${USE_ARIANNA:-true}
+      - ARIANNA_BASE_URL=${ARIANNA_BASE_URL:-http://arianna-host:3000}
       # ── Soglia tossicità configurabile ────────────────────────────
-      # Default 0.6 (60%) — ragionevole ma non universale (cfr. README §12).
+      # Default 0.6 (60%) — conservativa per contesto meeting aziendale.
       # Per modificare:  TOXICITY_THRESHOLD=0.5 docker compose up
       - TOXICITY_THRESHOLD=${TOXICITY_THRESHOLD:-0.6}
     depends_on:
