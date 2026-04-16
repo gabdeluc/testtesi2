@@ -27,8 +27,8 @@
 
 Meeting Intelligence è un sistema distribuito che analizza le trascrizioni di riunioni in tempo reale. Ogni messaggio del transcript viene classificato su due dimensioni indipendenti:
 
-- **Sentiment** — tono del messaggio (positivo/neutro/negativo), normalizzato in `[0, 1]` con Sentiment Polarity Index di sessione in `[-1, +1]`
-- **Tossicità** — linguaggio offensivo o inappropriato, score `[0, 1]` con soglia binaria a `0.6`
+- **Sentiment** — classe del messaggio ∈ {positivo, neutro, negativo}, prodotta dal modello `nlptown/bert-base-multilingual-uncased-sentiment`
+- **Tossicità** — linguaggio offensivo o inappropriato, score `[0, 1]` con soglia binaria configurabile (default `0.6`)
 
 Il sistema è progettato per integrarsi con la piattaforma **ARIANNA** (videoconferenza e ASR), ma include un layer di simulazione live lato backend e dati mock che permettono sviluppo e test completamente autonomi.
 
@@ -293,14 +293,26 @@ Copertura: ~95% statement, ~91% branch. Tutti i 202 test completano in 2.73 seco
 
 ## 12. Integrazione con Arianna
 
-### Modalità operativa in produzione
+### Modalità operativa
 
-In produzione, la fonte dati è ARIANNA. La modalità con dati mock è il caso **eccezionale**, da abilitare esplicitamente durante lo sviluppo. Il sistema funziona così:
+Il sistema è configurato per operare **per default connesso ad ARIANNA**. La variabile d'ambiente `USE_ARIANNA` ha valore di default `true` nel `docker-compose.yml`:
 
-1. Il Backend Gateway legge la variabile `USE_ARIANNA` all'avvio.
-2. Se `USE_ARIANNA=true`, ogni chiamata a `/meeting/{id}/analysis` interroga l'API di ARIANNA per ottenere le trascrizioni reali della stanza.
-3. I modelli BERT analizzano le trascrizioni ricevute in tempo reale.
-4. Se `USE_ARIANNA=false` (default di sviluppo), il backend genera trascrizioni deterministiche da `mock_data.yaml`.
+```yaml
+- USE_ARIANNA=${USE_ARIANNA:-true}
+```
+
+Comportamento:
+
+1. All'avvio, il Backend Gateway legge `USE_ARIANNA` dall'ambiente.
+2. Se `USE_ARIANNA=true` (default), ogni chiamata a `/meeting/{id}/analysis` interroga l'API di ARIANNA per ottenere le trascrizioni reali della stanza. I modelli BERT analizzano le trascrizioni ricevute in tempo reale.
+3. Se ARIANNA non è raggiungibile, il backend restituisce un errore HTTP (tipicamente 502 o 504). Il sistema **non** degrada silenziosamente a dati mock.
+4. Per sviluppo locale senza ARIANNA, l'utente deve disattivare esplicitamente l'integrazione impostando `USE_ARIANNA=false`:
+
+```bash
+    USE_ARIANNA=false docker compose up
+```
+
+In questa modalità il backend genera trascrizioni deterministiche da `mock_data.yaml`, utili solo per sviluppo dell'interfaccia.
 
 ### Configurazione per produzione
 

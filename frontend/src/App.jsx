@@ -449,11 +449,11 @@ export default function App() {
     })())
     const wSentDist = wgt('sentimentDist','Distribuzione Sentiment',true, <SentimentDistChart stats={S_id('sentimentDist')} />)
     const wTimeSent = wgt('timelineSentiment',
-      'Timeline Sentiment — polarity per messaggio nel tempo', true,
+      'Timeline Sentiment — classificazione per messaggio nel tempo', true,
       <TimelineChart
         messages={F('timelineSentiment')}
         metric="sentiment"
-        yLabel="Polarity  [−1 negativo · 0 neutro · +1 positivo]"
+        yLabel="Categoria modello nlptown"
         participants={participants}
         participantColors={PARTICIPANT_COLORS}
         meetingStartTime={allTranscript[0]?.created_at}
@@ -797,60 +797,56 @@ function SentimentDistChart({ stats }) {
 }
 
 // ─── TimelineChart ────────────────────────────────────────────────────────────
-// sentiment: polarity [-1, +1] con overlay per partecipante
-// toxicity:  probabilità [0-100%] con overlay per partecipante
+// sentiment: classificazione categorica nel tempo
+//            asse Y = {negativo, neutrale, positivo} (discreto)
+//            overlay di linee, una per partecipante
+// toxicity:  linea probabilità softmax del modello gravitee-io [0-100%]
 function TimelineChart({ messages, metric, yLabel, participants = [], participantColors = [], meetingStartTime }) {
   if (!messages?.length) return <Empty />
-
-  const [tooltip, setTooltip] = React.useState(null)
-  const chartRef              = React.useRef(null)
-
-  // ── Asse X: tempo relativo dal primo messaggio ─────────────────
+ 
+  // ── Asse X: tempo relativo dall'INIZIO DEL MEETING ─────────────
+  // Ancorato a meetingStartTime così i timestamp non cambiano
+  // quando si filtra per singolo partecipante.
   const base = new Date(meetingStartTime || messages[0].created_at).getTime()
   const fmt  = ts => {
     const s = Math.max(0, (new Date(ts).getTime() - base) / 1000)
     return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   }
-
-  // ── Punti dati ─────────────────────────────────────────────────
-  const pts = messages.map(m => {
-    const polarity    = m.sentiment.polarity ?? 0
-    const confidence  = m.sentiment.confidence ?? 0
-    const toxScore    = m.toxicity.toxicity_score ?? 0
-
-    return {
-      lbl:        fmt(m.created_at),
-      nick:       m.participant_name,
-      text:       m.transcribed_text,
-      sentLabel:  m.sentiment.label,
-      confidence: Math.round(confidence * 100),
-      y: metric === 'sentiment'
-        ? polarity
-        : Math.round(toxScore * 100),
-      isToxic: m.toxicity.is_toxic,
-    }
-  })
-
-  // ── Etichette X sparse ─────────────────────────────────────────
-  const step  = Math.max(1, Math.floor(messages.length / 10))
-  const xLbls = pts.map((p, i) =>
-    (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : ''
-  )
-
-  // ── Nomi partecipanti unici ────────────────────────────────────
-  const participantNames = participants.length
-    ? participants.map(p => p.name)
-    : [...new Set(messages.map(m => m.participant_name))]
-
-  // ── Decide se overlay o singolo partecipante ───────────────────
-  const isMultiParticipant = participantNames.length > 1
-    && new Set(messages.map(m => m.participant_name)).size > 1
-
-  // ── Dataset builder ────────────────────────────────────────────
-  const buildDatasets = () => {
-    if (metric === 'sentiment') {
-      if (isMultiParticipant) {
-        return participantNames.map((name, i) => {
+ 
+  // ═══════════════════════════════════════════════════════════════
+  // BRANCH SENTIMENT: classificazione categorica nel tempo
+  // ═══════════════════════════════════════════════════════════════
+  if (metric === 'sentiment') {
+    // Mappatura label → posizione Y (solo per il posizionamento grafico)
+    const LABEL_Y = { negative: -1, neutral: 0, positive: 1 }
+    const LABEL_COLOR = { negative: '#FF3B30', neutral: '#FFCC00', positive: '#34C759' }
+ 
+    // Nomi dei partecipanti presenti
+    const participantNames = participants.length
+      ? participants.map(p => p.name)
+      : [...new Set(messages.map(m => m.participant_name))]
+ 
+    const isMultiParticipant = participantNames.length > 1
+      && new Set(messages.map(m => m.participant_name)).size > 1
+ 
+    // Mapping di ogni messaggio in un punto
+    const pts = messages.map(m => ({
+      lbl:   fmt(m.created_at),
+      nick:  m.participant_name,
+      text:  m.transcribed_text,
+      label: m.sentiment.label,
+      y:     LABEL_Y[m.sentiment.label] ?? 0,
+    }))
+ 
+    // Etichette X sparse (non una per ogni messaggio)
+    const step  = Math.max(1, Math.floor(messages.length / 10))
+    const xLbls = pts.map((p, i) =>
+      (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : ''
+    )
+ 
+    // Dataset builder: una linea per partecipante quando multi, singola altrimenti
+    const datasets = isMultiParticipant
+      ? participantNames.map((name, i) => {
           const color = participantColors[i % participantColors.length] || '#888'
           return {
             label: name,
@@ -858,132 +854,40 @@ function TimelineChart({ messages, metric, yLabel, participants = [], participan
             borderColor: color,
             backgroundColor: color + '20',
             borderWidth: 1.5,
-            pointRadius: 4,
+            // Colore punto = categoria, bordo punto = partecipante
+            pointRadius: 5,
             pointHoverRadius: 8,
-            pointBackgroundColor: pts.map(p => {
-              if (p.nick !== name) return 'transparent'
-              return p.sentLabel === 'positive' ? '#34C759'
-                   : p.sentLabel === 'negative' ? '#FF3B30'
-                   : '#FFCC00'
-            }),
+            pointBackgroundColor: pts.map(p =>
+              p.nick === name ? LABEL_COLOR[p.label] : 'transparent'
+            ),
+            pointBorderColor: pts.map(p =>
+              p.nick === name ? color : 'transparent'
+            ),
+            pointBorderWidth: 2,
             fill: false,
-            tension: 0.15,
+            tension: 0,          // linee dritte tra punti (step-like feeling)
             spanGaps: true,
+            stepped: false,
           }
         })
-      } else {
-        const labelColor = pts.map(p =>
-          p.sentLabel === 'positive' ? '#34C759'
-          : p.sentLabel === 'negative' ? '#FF3B30'
-          : '#FFCC00'
-        )
-        return [{
-          label: 'Polarity',
+      : [{
+          label: participantNames[0] || 'Sentiment',
           data: pts.map(p => p.y),
           borderColor: '#636366',
           backgroundColor: 'rgba(100,100,100,0.1)',
           borderWidth: 1.5,
           pointRadius: 5,
           pointHoverRadius: 8,
-          pointBackgroundColor: labelColor,
-          pointBorderColor: labelColor,
+          pointBackgroundColor: pts.map(p => LABEL_COLOR[p.label]),
+          pointBorderColor: pts.map(p => LABEL_COLOR[p.label]),
+          pointBorderWidth: 2,
           fill: false,
-          tension: 0.15,
+          tension: 0,
         }]
-      }
-
-    } else {
-      if (isMultiParticipant) {
-        return participantNames.map((name, i) => {
-          const color = participantColors[i % participantColors.length] || '#888'
-          return {
-            label: name,
-            data: pts.map(p => p.nick === name ? p.y : null),
-            borderColor: color,
-            backgroundColor: color + '20',
-            borderWidth: 1.5,
-            pointRadius: 4,
-            pointHoverRadius: 8,
-            pointBackgroundColor: pts.map(p =>
-              p.nick === name
-                ? (p.isToxic ? '#FF3B30' : color)
-                : 'transparent'
-            ),
-            fill: false,
-            tension: 0.15,
-            spanGaps: true,
-          }
-        })
-      } else {
-        const ptColors = pts.map(p => p.isToxic ? '#FF3B30' : '#34C759')
-        return [{
-          label: 'Toxicity probability (%)',
-          data: pts.map(p => p.y),
-          borderColor: '#FF6B6B',
-          backgroundColor: '#FF6B6B20',
-          borderWidth: 1.5,
-          pointRadius: 5,
-          pointHoverRadius: 8,
-          pointBackgroundColor: ptColors,
-          pointBorderColor: ptColors,
-          fill: true,
-          tension: 0.15,
-        }]
-      }
-    }
-  }
-
-  const datasets = buildDatasets()
-
-  // ── Click handler per tooltip persistente ──────────────────────
-  const handleChartClick = (event) => {
-    const chart = chartRef.current
-    if (!chart) return
-    const elements = chart.getElementsAtEventForMode(
-      event.nativeEvent, 'nearest', { intersect: false, axis: 'x' }, false
-    )
-    if (!elements.length) { setTooltip(null); return }
-    const idx = elements[0].index
-    const pt  = pts[idx]
-    const rect = event.currentTarget.getBoundingClientRect()
-    const ex = event.nativeEvent.clientX ?? (event.nativeEvent.touches?.[0]?.clientX ?? 0)
-    const ey = event.nativeEvent.clientY ?? (event.nativeEvent.touches?.[0]?.clientY ?? 0)
-    if (tooltip && tooltip.idx === idx) { setTooltip(null); return }
-    setTooltip({ x: ex - rect.left, y: ey - rect.top, idx, pt })
-  }
-
-  // ── Configurazione assi Y ─────────────────────────────────────
-  const yConfig = metric === 'sentiment'
-    ? {
-        min: -1, max: 1,
-        grid: { color: 'rgba(255,255,255,0.05)' },
-        ticks: {
-          color: '#8e8e93',
-          stepSize: 0.5,
-          callback: v => v > 0 ? `+${v}` : `${v}`,
-        },
-        title: { display: true, text: yLabel, color: '#636366', font: { size: 10 } }
-      }
-    : {
-        min: 0, max: 100,
-        grid: { color: 'rgba(255,255,255,0.05)' },
-        ticks: { color: '#8e8e93', callback: v => v + '%' },
-        title: { display: true, text: yLabel, color: '#636366', font: { size: 10 } }
-      }
-
-  // ── Tooltip inline ─────────────────────────────────────────────
-  const tp = tooltip?.pt
-  const labelColor = tp
-    ? (metric === 'sentiment'
-        ? (tp.sentLabel === 'positive' ? '#34C759' : tp.sentLabel === 'negative' ? '#FF3B30' : '#FFCC00')
-        : (tp.isToxic ? '#FF3B30' : '#34C759'))
-    : '#fff'
-
-  return (
-    <div style={{ height: 300, position: 'relative' }}>
-      <div onClick={handleChartClick} onTouchEnd={handleChartClick}
-           style={{ height: '100%', cursor: 'crosshair' }}>
-        <Line ref={chartRef}
+ 
+    return (
+      <div style={{ height: 300, position: 'relative' }}>
+        <Line
           data={{ labels: xLbls, datasets }}
           options={{
             responsive: true, maintainAspectRatio: false,
@@ -991,83 +895,161 @@ function TimelineChart({ messages, metric, yLabel, participants = [], participan
             interaction: { mode: 'nearest', axis: 'x', intersect: false },
             plugins: {
               legend: {
-                display: isMultiParticipant || metric === 'sentiment',
+                display: isMultiParticipant,
                 position: 'top',
-                labels: { color: '#8e8e93', font: { size: 11 }, boxWidth: 12, padding: 8 }
+                labels: { color: '#8e8e93', font: { size: 11 }, boxWidth: 12, padding: 8 },
               },
               tooltip: {
                 backgroundColor: 'rgba(28,28,30,0.95)',
                 callbacks: {
                   title: items => {
-                    const idx = items[0].dataIndex
-                    return `${pts[idx].lbl} · ${pts[idx].nick}`
+                    const p = pts[items[0].dataIndex]
+                    return `${p.lbl} · ${p.nick}`
                   },
                   label: ctx => {
-                    const idx = ctx.dataIndex
-                    const p   = pts[idx]
-                    if (metric === 'sentiment') {
-                      const sign = p.y >= 0 ? '+' : ''
-                      return `Polarity: ${sign}${p.y.toFixed(2)} — ${p.sentLabel} (confidence ${p.confidence}%)`
-                    } else {
-                      return `Toxicity: ${p.y}% — ${p.isToxic ? 'TOSSICO' : 'non tossico'}`
-                    }
+                    const p = pts[ctx.dataIndex]
+                    const emoji = p.label === 'positive' ? '🟢'
+                                : p.label === 'negative' ? '🔴'
+                                : '🟡'
+                    return `${emoji} ${p.label.toUpperCase()}`
                   },
                   afterLabel: ctx => {
                     const t = pts[ctx.dataIndex].text
-                    return t.length > 60 ? t.slice(0, 60) + '…' : t
-                  }
-                }
-              }
+                    return t.length > 70 ? t.slice(0, 70) + '…' : t
+                  },
+                },
+              },
             },
             scales: {
               x: {
                 grid: { color: 'rgba(255,255,255,0.05)' },
                 ticks: { color: '#8e8e93', maxRotation: 0 },
-                title: { display: true, text: "Minuti dall'inizio del meeting", color: '#636366', font: { size: 10 } }
+                title: {
+                  display: true, text: "Minuti dall'inizio del meeting",
+                  color: '#636366', font: { size: 10 }
+                },
               },
-              y: yConfig
-            }
+              y: {
+                min: -1.3, max: 1.3,
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: {
+                  color: '#8e8e93',
+                  stepSize: 1,
+                  callback: v => {
+                    if (v ===  1) return 'Positivo'
+                    if (v ===  0) return 'Neutrale'
+                    if (v === -1) return 'Negativo'
+                    return ''
+                  },
+                },
+                title: {
+                  display: true, text: 'Categoria modello nlptown',
+                  color: '#636366', font: { size: 10 }
+                },
+              },
+            },
           }}
         />
       </div>
-
-      {/* Tooltip persistente on-click */}
-      {tp && (
-        <div style={{
-          position: 'absolute', left: Math.min(tooltip.x, 280), top: Math.max(tooltip.y - 80, 4),
-          background: 'rgba(28,28,30,0.96)', border: '1px solid rgba(255,255,255,0.15)',
-          borderRadius: 10, padding: '8px 12px', maxWidth: 280, zIndex: 10,
-          fontSize: 12, color: '#e5e5ea', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-          pointerEvents: 'none'
-        }}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            {tp.lbl} · <span style={{ color: labelColor }}>{tp.nick}</span>
-          </div>
-          {metric === 'sentiment' ? (
-            <>
-              <div>Label: <span style={{ color: labelColor, fontWeight: 600 }}>{tp.sentLabel}</span></div>
-              <div>Confidence: {tp.confidence}%</div>
-              <div>Polarity: {tp.y >= 0 ? '+' : ''}{tp.y.toFixed(2)}</div>
-            </>
-          ) : (
-            <div>Toxicity: <span style={{ color: labelColor, fontWeight: 600 }}>
-              {tp.y}% — {tp.isToxic ? 'TOSSICO' : 'non tossico'}
-            </span></div>
-          )}
-          <div style={{ marginTop: 4, color: '#8e8e93', fontStyle: 'italic' }}>
-            "{tp.text.length > 100 ? tp.text.slice(0, 100) + '…' : tp.text}"
-          </div>
-        </div>
-      )}
-
-      {/* Legenda semantica per sentiment (quando singolo partecipante) */}
-      {metric === 'sentiment' && !isMultiParticipant && (
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 4, fontSize: 11 }}>
-          <span style={{ color: '#34C759' }}>● Positivo</span>
-          <span style={{ color: '#FFCC00' }}>● Neutro</span>
-          <span style={{ color: '#FF3B30' }}>● Negativo</span>
-        </div>
-      )}
+    )
+  }
+ 
+  // ═══════════════════════════════════════════════════════════════
+  // BRANCH TOXICITY: linea probabilità (invariato)
+  // ═══════════════════════════════════════════════════════════════
+  const pts = messages.map(m => ({
+    lbl:      fmt(m.created_at),
+    nick:     m.participant_name,
+    text:     m.transcribed_text,
+    y:        Math.round((m.toxicity.toxicity_score ?? 0) * 100),
+    isToxic:  m.toxicity.is_toxic,
+  }))
+ 
+  const step  = Math.max(1, Math.floor(messages.length / 10))
+  const xLbls = pts.map((p, i) =>
+    (i === 0 || i === pts.length - 1 || i % step === 0) ? p.lbl : ''
+  )
+ 
+  const participantNames = participants.length
+    ? participants.map(p => p.name)
+    : [...new Set(messages.map(m => m.participant_name))]
+ 
+  const isMultiParticipant = participantNames.length > 1
+    && new Set(messages.map(m => m.participant_name)).size > 1
+ 
+  const datasets = isMultiParticipant
+    ? participantNames.map((name, i) => {
+        const color = participantColors[i % participantColors.length] || '#888'
+        return {
+          label: name,
+          data: pts.map(p => p.nick === name ? p.y : null),
+          borderColor: color,
+          backgroundColor: color + '20',
+          borderWidth: 1.5,
+          pointRadius: 4, pointHoverRadius: 8,
+          pointBackgroundColor: pts.map(p =>
+            p.nick === name ? (p.isToxic ? '#FF3B30' : color) : 'transparent'
+          ),
+          fill: false, tension: 0.15, spanGaps: true,
+        }
+      })
+    : [{
+        label: 'Probabilità tossicità (%)',
+        data: pts.map(p => p.y),
+        borderColor: '#FF6B6B',
+        backgroundColor: '#FF6B6B20',
+        borderWidth: 1.5,
+        pointRadius: 5, pointHoverRadius: 8,
+        pointBackgroundColor: pts.map(p => p.isToxic ? '#FF3B30' : '#34C759'),
+        fill: true, tension: 0.15,
+      }]
+ 
+  return (
+    <div style={{ height: 300, position: 'relative' }}>
+      <Line
+        data={{ labels: xLbls, datasets }}
+        options={{
+          responsive: true, maintainAspectRatio: false,
+          animation: { duration: 150 },
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
+          plugins: {
+            legend: {
+              display: isMultiParticipant, position: 'top',
+              labels: { color: '#8e8e93', font: { size: 11 }, boxWidth: 12, padding: 8 },
+            },
+            tooltip: {
+              backgroundColor: 'rgba(28,28,30,0.95)',
+              callbacks: {
+                title: items => `${pts[items[0].dataIndex].lbl} · ${pts[items[0].dataIndex].nick}`,
+                label: ctx => `Toxicity: ${ctx.parsed.y}% — ${pts[ctx.dataIndex].isToxic ? 'TOSSICO' : 'non tossico'}`,
+                afterLabel: ctx => {
+                  const t = pts[ctx.dataIndex].text
+                  return t.length > 60 ? t.slice(0, 60) + '…' : t
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#8e8e93', maxRotation: 0 },
+              title: {
+                display: true, text: "Minuti dall'inizio del meeting",
+                color: '#636366', font: { size: 10 }
+              },
+            },
+            y: {
+              min: 0, max: 100,
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#8e8e93', callback: v => v + '%' },
+              title: {
+                display: true, text: yLabel,
+                color: '#636366', font: { size: 10 }
+              },
+            },
+          },
+        }}
+      />
     </div>
   )
 }
